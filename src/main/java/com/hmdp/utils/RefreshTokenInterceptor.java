@@ -21,13 +21,16 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info("刷新拦截器启动拦截");
         //实现将当前用户放到threadlocal里
         //获取当前token
         String token = request.getHeader("Authorization");
+        log.info("从Authorization头获取到的token：{}", token);
         //从redis里获取当前用户
-        String key = RedisConstants.LOGIN_CODE_KEY + token;
+        String key = RedisConstants.LOGIN_USER_KEY + token;
+        log.info("生成的Redis查询key：{}", key); // 新增：打印Redis的key
         Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
-        log.info("刷新拦截器启动拦截");
+        log.info("从Redis查询到的userMap是否为空：{}", userMap.isEmpty()); // 新增：判断userMap是否有数据
         //不存在用户
         if (userMap.isEmpty()) {
            return true;
@@ -35,7 +38,7 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         //将用户从hash转换成bean以后才能存threadlocal
         UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
         //刷新时间
-        stringRedisTemplate.expire(key,RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
+        stringRedisTemplate.expire(key,RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         UserHolder.saveUser(userDTO);
         return true;
     }

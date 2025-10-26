@@ -4,7 +4,6 @@ package com.hmdp.controller;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
-import com.hmdp.entity.User;
 import com.hmdp.entity.UserInfo;
 import com.hmdp.service.IUserInfoService;
 import com.hmdp.service.IUserService;
@@ -49,8 +48,7 @@ public class UserController {
      */
     @PostMapping("/login")
     public Result login(@RequestBody LoginFormDTO loginFormDTO, HttpSession session){
-        userService.login(loginFormDTO,session);
-        return Result.ok();
+        return userService.login(loginFormDTO, session);
     }
 
     /**
