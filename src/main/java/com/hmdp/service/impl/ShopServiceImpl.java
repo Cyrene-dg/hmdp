@@ -9,9 +9,11 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.CacheClient;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -37,6 +39,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private CacheClient cacheClient;
 
 
     @Override
@@ -47,7 +51,13 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         //缓存击穿
 //        Shop shop = queryWithMutex(id);
         //逻辑过期
-        Shop shop = queryWithLogicExpire(id);
+//        Shop shop = queryWithLogicExpire(id);
+        //封装好的缓存穿透
+//        Shop shop = cacheClient.queryWithPassThrow(RedisConstants.CACHE_SHOP_KEY,id,Shop.class,this::getById,RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
+        //封装好的逻辑过期
+        Shop shop = cacheClient.queryWithLogicExpire(RedisConstants.CACHE_SHOP_KEY,RedisConstants.LOCK_SHOP_KEY,id,Shop.class,this::getById,RedisConstants.LOGIN_CODE_TTL,TimeUnit.SECONDS);
+
+
         if (shop == null) {
             return Result.fail("店铺不存在");
         }
@@ -164,8 +174,6 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      */
     private  static final ExecutorService CATCH_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
-    // ThreadLocal：存储当前线程持有的锁的唯一标识（解决锁归属校验问题）
-    private static final ThreadLocal<String> LOCK_VALUE_THREAD_LOCAL = new ThreadLocal<>();
 
 
     /**
