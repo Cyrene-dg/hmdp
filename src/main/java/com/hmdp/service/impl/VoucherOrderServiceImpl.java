@@ -48,7 +48,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足");
         }
         //还有库存，操作数据库，将数据库内秒杀劵的数量减一
-        boolean update = seckillVoucherService.update().setSql("stock = stock - 1").eq("voucher_id", voucherId).update();
+        boolean update = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherId)
+                .gt("stock",0)//加入乐观锁，在操作数据库的时候再次查看库存是否大于零，由于这一条sql的查询是原子操作，不存在其他线程干扰的问题，即完成了乐观锁
+                .update();
 
         if(!update){
            return Result.fail("库存不足");
@@ -57,11 +61,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //包括订单的全局唯一id，下单的用户id，当前的优惠券id
         VoucherOrder voucherOrder = new VoucherOrder();
         long order = redisIdWoker.nexId("order");
-        UserDTO user = UserHolder.getUser();
-        Long userId = user.getId();
+        Long id = UserHolder.getUser().getId();
 
         voucherOrder.setId(order);
-        voucherOrder.setUserId(userId);
+        voucherOrder.setUserId(id);
         voucherOrder.setVoucherId(voucherId);
 
 
