@@ -48,6 +48,7 @@ public class SimplyRedisLock implements  ILock{
         //获取redis里存的锁的value
         String redisValue = stringRedisTemplate.opsForValue().get(KEY_PREFIX + name);
         //对比二者
+        //由于对比的过程仍然不具备原子性，那就使用lua脚本将对比和释放锁的过程绑定成原子操作。这里先不实现
         if(value.equals(redisValue)){
 //            相同就释放锁
             stringRedisTemplate.delete(KEY_PREFIX + name);
