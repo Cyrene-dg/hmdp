@@ -7,10 +7,13 @@ import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWoker;
+import com.hmdp.utils.SimplyRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +36,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWoker redisIdWoker;
 
     private static final Object GLOBAL_LOCK = new Object();
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Override
     public Result secKillVoucher(Long voucherId) {
@@ -50,13 +55,27 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足");
         }
 
-        Long id = UserHolder.getUser().getId();
+        Long userId = UserHolder.getUser().getId();
+        //获取锁对象
+        SimplyRedisLock lock = new SimplyRedisLock(RedisConstants.LOCK_ORDER_KEY+userId,stringRedisTemplate);
+
+        boolean tryLock = lock.tryLock(1200L);
+        //判断成功失败，失败返回错误信息
+        if(!tryLock){
+            return Result.fail("不能重复下单");
+        }
+
 
         //两点注意，一是必须在整个方法外加锁，不然无法把事务包含进去，第二是不能直接用当前方法的实例，因为没有加事务，导致spring事务失效，必须拿到代理对象，即不能事务没提交就释放锁
-        synchronized (GLOBAL_LOCK){
-            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
-            return proxy.createVoucherOrder(voucherId);}
+        try{
+        IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
+        return proxy.createVoucherOrder(voucherId);
+        }finally {
+            //释放锁
+            lock.unlock();
+        }
     }
+
 
     @Transactional
     public Result createVoucherOrder(Long voucherId) {

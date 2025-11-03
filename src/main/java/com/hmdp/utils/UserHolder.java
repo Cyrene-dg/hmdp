@@ -1,5 +1,6 @@
 package com.hmdp.utils;
 
+
 import com.hmdp.dto.UserDTO;
 
 public class UserHolder {
@@ -16,4 +17,5 @@ public class UserHolder {
     public static void removeUser(){
         tl.remove();
     }
+
 }
