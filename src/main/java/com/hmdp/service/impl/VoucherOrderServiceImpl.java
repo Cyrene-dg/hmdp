@@ -11,6 +11,9 @@ import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWoker;
 import com.hmdp.utils.SimplyRedisLock;
 import com.hmdp.utils.UserHolder;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.redisson.client.RedisClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,6 +37,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private SeckillVoucherServiceImpl seckillVoucherService;
     @Autowired
     private RedisIdWoker redisIdWoker;
+    @Autowired
+    private RedissonClient redissonClient;
 
     private static final Object GLOBAL_LOCK = new Object();
     @Autowired
@@ -57,9 +62,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         Long userId = UserHolder.getUser().getId();
         //获取锁对象
-        SimplyRedisLock lock = new SimplyRedisLock("order:"+userId,stringRedisTemplate);
+//        SimplyRedisLock lock = new SimplyRedisLock("order:"+userId,stringRedisTemplate);
 
-        boolean tryLock = lock.tryLock(1200L);
+//        boolean tryLock = lock.tryLock(1200L);
+//        使用Redission获取锁
+        RLock lock = redissonClient.getLock("lock:order" + userId);
+        boolean tryLock = lock.tryLock();
         //判断成功失败，失败返回错误信息
         if(!tryLock){
             return Result.fail("不能重复下单");
