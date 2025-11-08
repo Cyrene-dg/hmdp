@@ -1,0 +1,1 @@
+1.注意，使用apifox测试接口的时候要填写正确的Authorization，要不然getuserid会报空指针

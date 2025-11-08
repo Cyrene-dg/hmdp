@@ -16,11 +16,19 @@ import org.redisson.api.RedissonClient;
 import org.redisson.client.RedisClient;
 import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * <p>
@@ -44,6 +52,114 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 
+    private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+
+    static {
+        SECKILL_SCRIPT = new DefaultRedisScript<>();
+        SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
+        SECKILL_SCRIPT.setResultType(Long.class);
+    }
+
+    @Override
+    public Result secKillVoucher(Long voucherId) {
+        Long userId = UserHolder.getUser().getId();
+        //运行lua脚本
+        Long result = stringRedisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId.toString(), userId.toString()
+        );
+        //判断是否为0
+        //不为零，没有购买资格
+        int r = result.intValue();
+        if (r != 0) {
+            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
+        }
+        //为零，可以购买，将购买信心保存到阻塞队列
+        // 构造订单对象
+        long orderId = redisIdWoker.nexId("order");
+        VoucherOrder order = new VoucherOrder();
+        order.setId(orderId);
+        order.setUserId(userId);
+        order.setVoucherId(voucherId);
+        // 订单入队（简单入队，不设超时）
+        try {
+            SECKILL_ORDER_QUEUE.put(order); // 队列满了就阻塞，初学者易理解
+        } catch (InterruptedException e) {
+            return Result.fail("下单失败");
+        }
+        //返回订单id
+        return Result.ok(orderId);
+    }
+
+
+    // 简单有界阻塞队列：容量5000，直接存订单实体，无额外配置
+    private static final BlockingQueue<VoucherOrder> SECKILL_ORDER_QUEUE = new LinkedBlockingQueue<>(5000);
+    // 最简单线程池：固定1个线程，默认配置，不用复杂参数
+    private static final ExecutorService SECKILL_EXECUTOR = Executors.newFixedThreadPool(1);
+
+    // 应用启动时自动启动线程池消费队列
+    @PostConstruct
+    public void initConsumer() {
+        // 线程池执行消费任务，循环拿队列数据
+        //内部匿名类启动队列
+        SECKILL_EXECUTOR.execute(() -> {
+            while (true) {
+                try {
+                    // 阻塞获取订单：队列空就等，有数据就取
+                    VoucherOrder voucherOrder = SECKILL_ORDER_QUEUE.take();
+                    // 处理订单（扣库存+保存）
+                    handleVoucherOrder(voucherOrder);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+    }
+
+
+    @Transactional
+    public void handleVoucherOrder(VoucherOrder voucherOrder) {
+
+        //直接使用voucherOrder来获取订单id和用户id
+        Long id = voucherOrder.getId();
+        Long voucherId = voucherOrder.getVoucherId();
+
+        //继续进行一人一单的数据库校验
+        Integer count = query().eq("user_id", id).eq("voucher_id", voucherId).count();
+        if (count > 0) {
+            return;
+        }
+
+        //核心逻辑，扣减库存
+        boolean update = seckillVoucherService.update()
+                .setSql("stock = stock - 1")
+                .eq("voucher_id", voucherId)
+                .gt("stock", 0)//加入乐观锁，在操作数据库的时候再次查看库存是否大于零，由于这一条sql的查询是原子操作，不存在其他线程干扰的问题，即完成了乐观锁.
+                .update();//注意，一定去掉类上面的事务注解，必须保证锁必须把所有事务包含进去，不能释放了锁以后事务还没完。
+
+        if (!update) {
+            return;
+        }
+
+        //核心逻辑，订单保存到数据库
+        save(voucherOrder);
+
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /*
     @Override
     public Result secKillVoucher(Long voucherId) {
         //通过优惠券id查询优惠卷，类型是秒杀劵，引入秒杀卷管理service
@@ -84,7 +200,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+*/
 
+    //原先的处理订单的逻辑
     @Transactional
     public Result createVoucherOrder(Long voucherId) {
         //还有库存，操作数据库，将数据库内秒杀劵的数量减一
@@ -122,3 +240,5 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(voucherOrder);
     }
 }
+
+
