@@ -1,34 +1,30 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import com.hmdp.dto.Result;
-import com.hmdp.dto.UserDTO;
-import com.hmdp.entity.SeckillVoucher;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisIdWoker;
-import com.hmdp.utils.SimplyRedisLock;
 import com.hmdp.utils.UserHolder;
-import org.redisson.api.RLock;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RedissonClient;
-import org.redisson.client.RedisClient;
-import org.springframework.aop.framework.AopContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
-import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.Collections;
-import java.util.concurrent.BlockingQueue;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * <p>
@@ -39,6 +35,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @since 2021-12-22
  */
 @Service
+@Slf4j
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
     @Autowired
@@ -47,6 +44,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIdWoker redisIdWoker;
     @Autowired
     private RedissonClient redissonClient;
+    // 注入自身的代理对象
+    @Autowired
+    private VoucherOrderServiceImpl thisProxy;
 
     private static final Object GLOBAL_LOCK = new Object();
     @Autowired
@@ -63,59 +63,158 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Override
     public Result secKillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
-        //运行lua脚本
+        long orderId = redisIdWoker.nexId("order");
+        //运行lua脚本，订单信息写入消费队列的代码也在lua脚本里
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
-                voucherId.toString(), userId.toString()
+                voucherId.toString(), userId.toString(),String.valueOf(orderId)
         );
         //判断是否为0
         //不为零，没有购买资格
         int r = result.intValue();
-        if (r != 0) {
+        if (r != 0 ) {
             return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
-        }
-        //为零，可以购买，将购买信心保存到阻塞队列
-        // 构造订单对象
-        long orderId = redisIdWoker.nexId("order");
-        VoucherOrder order = new VoucherOrder();
-        order.setId(orderId);
-        order.setUserId(userId);
-        order.setVoucherId(voucherId);
-        // 订单入队（简单入队，不设超时）
-        try {
-            SECKILL_ORDER_QUEUE.put(order); // 队列满了就阻塞，初学者易理解
-        } catch (InterruptedException e) {
-            return Result.fail("下单失败");
         }
         //返回订单id
         return Result.ok(orderId);
     }
 
+    private static final String STREAM_KEY = "stream.orders"; // Stream 键
+    private static final String CONSUMER_GROUP = "seckill-order-group"; // 消费者组
+    private static final String CONSUMER_NAME = "seckill-consumer-1"; // 消费者
 
-    // 简单有界阻塞队列：容量5000，直接存订单实体，无额外配置
-    private static final BlockingQueue<VoucherOrder> SECKILL_ORDER_QUEUE = new LinkedBlockingQueue<>(5000);
-    // 最简单线程池：固定1个线程，默认配置，不用复杂参数
-    private static final ExecutorService SECKILL_EXECUTOR = Executors.newFixedThreadPool(1);
 
-    // 应用启动时自动启动线程池消费队列
+    private final ExecutorService seckillOrderExecutor = Executors.newSingleThreadExecutor(
+            r -> new Thread(r, "Seckill-Stream-Consumer-Pool") // 自定义线程名称，便于调试
+    );
+
+
     @PostConstruct
-    public void initConsumer() {
-        // 线程池执行消费任务，循环拿队列数据
-        //内部匿名类启动队列
-        SECKILL_EXECUTOR.execute(() -> {
+    public void startStreamConsumer() {
+        //首先创建消费者组，也能在redis命令中创建。注意消息队列是lua脚本的命令自动创建的
+        try {
+            stringRedisTemplate.opsForStream().createGroup(STREAM_KEY, CONSUMER_GROUP);
+            log.info("消费者组 {} 创建成功", CONSUMER_GROUP);
+        } catch (Exception e) {
+            log.info("消费者组 {} 已存在", CONSUMER_GROUP);
+        }
+        //开始循环，从消息队列中读取信息
+
+        // 2. 向线程池提交消费任务
+        seckillOrderExecutor.submit(() -> {
             while (true) {
                 try {
-                    // 阻塞获取订单：队列空就等，有数据就取
-                    VoucherOrder voucherOrder = SECKILL_ORDER_QUEUE.take();
-                    // 处理订单（扣库存+保存）
-                    handleVoucherOrder(voucherOrder);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
+                    // 3. 读取 Stream 消息（XREADGROUP）
+                    List<MapRecord<String, Object, Object>> records = stringRedisTemplate.opsForStream().read(
+                            Consumer.from(CONSUMER_GROUP, CONSUMER_NAME),
+                            StreamReadOptions.empty().block(Duration.ofSeconds(1)), // 阻塞1秒
+                            StreamOffset.create(STREAM_KEY, ReadOffset.lastConsumed())
+                    );
+//                    对比代码
+//                    List<MapRecord<String, Object, Object>> list = stringRedisTemplate.opsForStream().read(
+//                            Consumer.from("g1", "c1"),
+//                            StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
+//                            StreamOffset.create(queueName, ReadOffset.lastConsumed())
+//                    );
+
+                    // 4. 处理消息（无消息则继续循环）
+                    if (records == null || records.isEmpty()) {
+                        continue;
+                    }
+
+                    // 5. 遍历处理每条消息
+                    for (MapRecord<String, Object, Object> record : records) {
+                        log.info("接收到秒杀订单消息：{}", record);
+                        Map<Object, Object> value = record.getValue();
+
+                        // 6. 解析消息字段
+                        VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(value, new VoucherOrder(), true);
+                        //仍然注意获取代理对象防止事务失效
+                        thisProxy.handleVoucherOrder(voucherOrder);
+
+//                        对比代码
+//                        MapRecord<String, Object, Object> record = list.get(0);
+//                        Map<Object, Object> values = record.getValue();
+//                        VoucherOrder voucherOrder = BeanUtil.fillBeanWithMap(values, new VoucherOrder(), true);
+
+                        // 8. 确认消息已处理（XACK）
+                        stringRedisTemplate.opsForStream().acknowledge(STREAM_KEY, CONSUMER_GROUP, record.getId());
+                        log.info("订单 {} 处理完成并确认", voucherOrder.getVoucherId());
+                    }
+                } catch (Exception e) {
+                    log.error("处理Stream消息异常", e);
+                    //不需要再循环处理消息处理失败的异常了，因为ReadOffset.lastConsumed()能够自动读取
+                    try {
+                        Thread.sleep(1000); // 异常时休眠1秒，避免循环过快
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
                 }
-            }
-        });
+
+        //解析信息并处理
+        //最后确认信息处理完毕
+    }});
     }
+    //TODO 逻辑仍然可以优化，首先是出现异常不能无限循环试错，应加入死信队列机制防止无限死循环。其次存入消息队列的消息会永久保存到消息队列中，应该加入定时清理逻辑
+
+
+//    @Override
+//    public Result secKillVoucher(Long voucherId) {
+//        Long userId = UserHolder.getUser().getId();
+//        //运行lua脚本
+//        Long result = stringRedisTemplate.execute(
+//                SECKILL_SCRIPT,
+//                Collections.emptyList(),
+//                voucherId.toString(), userId.toString()
+//        );
+//        //判断是否为0
+//        //不为零，没有购买资格
+//        int r = result.intValue();
+//        if (r != 0) {
+//            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
+//        }
+//        //为零，可以购买，将购买信心保存到阻塞队列
+//        // 构造订单对象
+//        long orderId = redisIdWoker.nexId("order");
+//        VoucherOrder order = new VoucherOrder();
+//        order.setId(orderId);
+//        order.setUserId(userId);
+//        order.setVoucherId(voucherId);
+//        // 订单入队（简单入队，不设超时）
+//        try {
+//            SECKILL_ORDER_QUEUE.put(order); // 队列满了就阻塞，初学者易理解
+//        } catch (InterruptedException e) {
+//            return Result.fail("下单失败");
+//        }
+//        //返回订单id
+//        return Result.ok(orderId);
+//    }
+//
+//
+//    // 简单有界阻塞队列：容量5000，直接存订单实体，无额外配置
+//    private static final BlockingQueue<VoucherOrder> SECKILL_ORDER_QUEUE = new LinkedBlockingQueue<>(5000);
+//    // 最简单线程池：固定1个线程，默认配置，不用复杂参数
+//    private static final ExecutorService SECKILL_EXECUTOR = Executors.newFixedThreadPool(1);
+//
+//    // 应用启动时自动启动线程池消费队列
+//    @PostConstruct
+//    public void initConsumer() {
+//        // 线程池执行消费任务，循环拿队列数据
+//        //内部匿名类启动队列
+//        SECKILL_EXECUTOR.execute(() -> {
+//            while (true) {
+//                try {
+//                    // 阻塞获取订单：队列空就等，有数据就取
+//                    VoucherOrder voucherOrder = SECKILL_ORDER_QUEUE.take();
+//                    // 处理订单（扣库存+保存）
+//                    handleVoucherOrder(voucherOrder);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
+//    }
 
 
     @Transactional
