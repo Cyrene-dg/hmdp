@@ -8,11 +8,13 @@ import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -30,7 +32,7 @@ import java.util.List;
 public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
     @Autowired
-    private UserServiceImpl userServiceImpl;
+    private IUserService userService;
     @Qualifier("stringRedisTemplate")
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
@@ -86,15 +88,15 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         Long userId = UserHolder.getUser().getId();
         //判断是否已经点赞
         //键未博客id，值为用户id
-        Boolean isLiked = stringRedisTemplate.opsForSet().isMember(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());
+        Double isLiked = stringRedisTemplate.opsForZSet().score(RedisConstants.BLOG_LIKED_KEY + id,userId.toString());
         //未点赞，那就点赞数据库liked字段加一，用户存进redis的set集合里
-        if(BooleanUtil.isFalse(isLiked)){
+        if(isLiked == null){
             boolean update = update().setSql("liked = liked + 1").eq("id", id).update();
-            if(update){stringRedisTemplate.opsForSet().add(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());}
+            if(update){stringRedisTemplate.opsForZSet().add(RedisConstants.BLOG_LIKED_KEY + id,userId.toString(),System.currentTimeMillis());}
         }else {
             //已经点赞，那就数据库点赞数量减一，从set集合里删除
             boolean update = update().setSql("liked = liked - 1").eq("id", id).update();
-            if (update){stringRedisTemplate.opsForSet().remove(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());}
+            if (update){stringRedisTemplate.opsForZSet().remove(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());}
         }
         return Result.ok();
     }
@@ -106,7 +108,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      */
     private Blog buildBlog(Blog blog) {
         Long userId = blog.getUserId();
-        User user = userServiceImpl.getById(userId);
+        User user = userService.getById(userId);
         blog.setIcon(user.getIcon());
         blog.setName(user.getNickName());
         return blog;
@@ -120,7 +122,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private void isLikedBlog(Blog blog) {
         Long userId = UserHolder.getUser().getId();
         Long id = blog.getId();
-        Boolean isLiked = stringRedisTemplate.opsForSet().isMember(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());
-        blog.setIsLike(BooleanUtil.isTrue(isLiked));
+        Double isLiked = stringRedisTemplate.opsForZSet().score(RedisConstants.BLOG_LIKED_KEY + id,userId.toString());
+        blog.setIsLike(isLiked != null);
     }
 }
