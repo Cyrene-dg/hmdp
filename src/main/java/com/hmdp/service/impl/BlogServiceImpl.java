@@ -1,13 +1,17 @@
 package com.hmdp.service.impl;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.SystemConstants;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
 
 /**
  * <p>
@@ -31,10 +35,29 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         if (blog == null) {
             return Result.fail("blog不存在");
         }
+        Blog buildBlog = buildBlog(blog);
+        return Result.ok(buildBlog);
+    }
+
+    private Blog buildBlog(Blog blog) {
         Long userId = blog.getUserId();
         User user = userServiceImpl.getById(userId);
         blog.setIcon(user.getIcon());
         blog.setName(user.getNickName());
-        return Result.ok(blog);
+        return blog;
+    }
+
+    @Override
+    public Result getHotBlog(Integer current) {
+        // 根据用户查询
+        Page<Blog> page = query()
+                .orderByDesc("liked")
+                .page(new Page<>(current, SystemConstants.MAX_PAGE_SIZE));
+        // 获取当前页数据
+        List<Blog> records = page.getRecords();
+        // 查询用户
+        records.forEach(this::buildBlog);
+        return Result.ok(records);
+
     }
 }
