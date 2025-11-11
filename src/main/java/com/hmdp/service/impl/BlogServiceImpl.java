@@ -1,8 +1,11 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.BooleanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
@@ -12,13 +15,17 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * <p>
@@ -99,6 +106,30 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             if (update){stringRedisTemplate.opsForZSet().remove(RedisConstants.BLOG_LIKED_KEY + id, userId.toString());}
         }
         return Result.ok();
+    }
+
+    /**
+     * 查询点赞列表
+     * @param id
+     * @return
+     */
+    @Override
+    public Result queryBlogLikes(Long id) {
+        //核心思路就是从zset集合里拿出排名前五的用户id，然后从数据库里查询用户，返回的是排名前五的userDTO 的列表
+        //首先从zset里拿出用户id
+        String key = RedisConstants.BLOG_LIKED_KEY + id;
+        Set<String> top5 = stringRedisTemplate.opsForZSet().reverseRange(key, 0, 4);
+        if(top5 == null || top5.isEmpty()){return Result.ok(Collections.emptyList());}
+        List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
+        //然后从数据库里查用户并转成dto
+        String idStr = StrUtil.join(",",ids);
+        List<UserDTO> userDTOS = userService.query()
+                //查出来的top5顺序是反的，这里反过来
+                .in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list()
+                .stream()
+                .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
+                .collect(Collectors.toList());
+        return Result.ok(userDTOS);
     }
 
     /**
