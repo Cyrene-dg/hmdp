@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static net.sf.jsqlparser.util.validation.metadata.NamedObject.user;
+
 /**
  * <p>
  *  服务实现类
