@@ -7,10 +7,12 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
+import com.hmdp.entity.Follow;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.BlogMapper;
 import com.hmdp.service.IBlogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.service.IFollowService;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
@@ -45,6 +47,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Qualifier("stringRedisTemplate")
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
+    @Autowired
+    private IFollowService followService;
 
     /**
      * blog单体查询
@@ -132,6 +136,29 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
                 .map(user -> BeanUtil.copyProperties(user, UserDTO.class))
                 .collect(Collectors.toList());
         return Result.ok(userDTOS);
+    }
+
+    @Override
+    public Result saveBlog(Blog blog) {
+        //方法核心逻辑，保存自己写的推文后利用zset发送给每一个用户
+        //blog里为userId赋值，然后保存到数据库
+        UserDTO user = UserHolder.getUser();
+        blog.setUserId(user.getId());
+
+        boolean save = save(blog);
+        if (!save) {return Result.fail("保存用户失败");}
+
+        //保存成功后查询所有粉丝然后推送到所有粉丝的收件箱
+        //查询所有粉丝
+        List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
+        for (Follow follow : follows) {
+            //获取粉丝id，这是收件箱set的key，然后用add方法推送就行了
+            Long userId = follow.getUserId();
+            String key = "feed:" + userId;
+            stringRedisTemplate.opsForZSet().add(key,blog.getId().toString(),System.currentTimeMillis() );
+        }
+        //保存博客方法，返回的是博客id
+        return Result.ok(blog.getId());
     }
 
     /**
