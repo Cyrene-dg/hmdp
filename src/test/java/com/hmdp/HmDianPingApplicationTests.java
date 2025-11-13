@@ -1,12 +1,21 @@
 package com.hmdp;
 
+import com.hmdp.entity.Shop;
 import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.RedisIdWoker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.geo.Point;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.annotation.DirtiesContext;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @SpringBootTest
 class HmDianPingApplicationTests {
@@ -15,6 +24,9 @@ class HmDianPingApplicationTests {
 
     @Autowired
     private RedisIdWoker redisIdWoker;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     // 测试类中创建es，适配IO密集型任务
     private ExecutorService es = new ThreadPoolExecutor(
@@ -55,6 +67,37 @@ class HmDianPingApplicationTests {
         long end = System.currentTimeMillis();
         System.out.println("time = "+(end - begin));
     }
+
+    //往redis里添加现有的店铺的位置信息
+    @Test
+    @DirtiesContext
+    void loadShopData(){
+        //查询所有店铺的信息封装到一个集合
+        List<Shop> list = shopService.list();
+        //店铺按照typeId分组，店铺类型相同的放到一个集合里
+        Map<Long,List<Shop>> map = list.stream().collect(Collectors.groupingBy(Shop::getTypeId));
+        //循环写入redis里
+        //Entry相当于一个map的包装器，遍历的不能直接是map，先转换成set载遍历
+        // 3.分批完成写入Redis
+        for (Map.Entry<Long, List<Shop>> entry : map.entrySet()) {
+            // 3.1.获取类型id
+            Long typeId = entry.getKey();
+            String key = "shop:geo:" + typeId;
+            // 3.2.获取同类型的店铺的集合
+            List<Shop> value = entry.getValue();
+            List<RedisGeoCommands.GeoLocation<String>> locations = new ArrayList<>(value.size());
+            // 3.3.写入redis GEOADD key 经度 纬度 member
+            for (Shop shop : value) {
+//                stringRedisTemplate.opsForGeo().add(key,new Point(shop.getX(),shop.getY()),shop.getId().toString());
+                locations.add(new RedisGeoCommands.GeoLocation<>(
+                        shop.getId().toString(),
+                        new Point(shop.getX(), shop.getY())
+                ));
+            }
+            stringRedisTemplate.opsForGeo().add(key, locations);
+        }
+    }
+
 
 
 }
