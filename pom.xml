@@ -15,73 +15,113 @@
     <description>Demo project for Spring Boot</description>
     <properties>
         <java.version>1.8</java.version>
+        <!-- 统一指定 Spring Data Redis 版本（支持 GEO search 方法） -->
+        <spring-data-redis.version>2.6.2</spring-data-redis.version>
+        <!-- 统一指定 Lettuce 版本（与 Spring Data Redis 2.6.2 兼容） -->
+        <lettuce.version>6.1.6.RELEASE</lettuce.version>
     </properties>
     <dependencies>
+        <!-- Spring Data Redis（升级版本以支持 GEO search 方法） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
+            <!-- 排除父工程默认的低版本 Spring Data Redis -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.data</groupId>
+                    <artifactId>spring-data-redis</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.lettuce</groupId>
+                    <artifactId>lettuce-core</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
+
+        <!-- 引入高版本 Spring Data Redis（支持 Redis 6.2+ GEOSEARCH 命令） -->
+        <dependency>
+            <groupId>org.springframework.data</groupId>
+            <artifactId>spring-data-redis</artifactId>
+            <version>${spring-data-redis.version}</version>
+        </dependency>
+
+        <!-- 引入兼容的 Lettuce 客户端（与 Spring Data Redis 2.6.2 匹配） -->
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>${lettuce.version}</version>
+        </dependency>
+
+        <!-- Redis 连接池依赖 -->
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-pool2</artifactId>
         </dependency>
+
+        <!-- Web 依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
+
+        <!-- MySQL 驱动 -->
         <dependency>
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
             <scope>runtime</scope>
             <version>8.0.33</version>
         </dependency>
+
+        <!-- 测试依赖 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- 显式添加lettuce-core，版本与Spring Boot 2.3.x兼容 -->
-        <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
-            <version>5.3.7.RELEASE</version> <!-- 与Spring Boot 2.3.12.RELEASE匹配的稳定版 -->
-        </dependency>
+
+        <!-- MyBatis-Plus -->
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-boot-starter</artifactId>
             <version>3.4.3</version>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-autoconfigure</artifactId>
-            <version>2.3.12.RELEASE</version> <!-- 与你的Spring Boot父版本一致 -->
-        </dependency>
-        <!--hutool-->
+
+        <!-- Hutool 工具类 -->
         <dependency>
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>5.7.17</version>
         </dependency>
+
+        <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
-            <version>1.18.32</version> <!-- 显式指定高版本，兼容JDK 16+ -->
+            <version>1.18.32</version>
             <optional>true</optional>
         </dependency>
+
+        <!-- AOP 依赖 -->
         <dependency>
             <groupId>org.aspectj</groupId>
             <artifactId>aspectjweaver</artifactId>
-            <version>1.9.7</version> <!-- 适配Spring版本即可 -->
+            <version>1.9.7</version>
         </dependency>
+
+        <!-- Redisson（分布式锁等）：排除冲突依赖，使用项目统一版本 -->
         <dependency>
             <groupId>org.redisson</groupId>
             <artifactId>redisson-spring-boot-starter</artifactId>
             <version>3.16.8</version>
-            <!-- 排除 Redisson 对 Redis 连接工厂的自动配置 -->
             <exclusions>
+                <!-- 排除 Redisson 自带的 Spring Data Redis 和 Lettuce，避免版本冲突 -->
                 <exclusion>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-starter-data-redis</artifactId>
+                    <groupId>org.springframework.data</groupId>
+                    <artifactId>spring-data-redis</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.lettuce</groupId>
+                    <artifactId>lettuce-core</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
