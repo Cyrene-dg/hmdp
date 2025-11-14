@@ -38,12 +38,12 @@ class HmDianPingApplicationTests {
             new ThreadPoolExecutor.CallerRunsPolicy() // 队列满时，主线程帮忙执行，避免拒绝
     );
 
-    @Test
+//    @Test
     public void testSaveShop() throws InterruptedException {
         shopService.saveShopToRedisWithExpire(1L,10L);
     }
 
-    @Test
+//    @Test
     public void testIdWork() throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(300);
 
@@ -69,7 +69,7 @@ class HmDianPingApplicationTests {
     }
 
     //往redis里添加现有的店铺的位置信息
-    @Test
+//    @Test
     @DirtiesContext
     void loadShopData(){
         //查询所有店铺的信息封装到一个集合
@@ -98,6 +98,41 @@ class HmDianPingApplicationTests {
         }
     }
 
+//    @Test
+//    void testHyperLogLog() {
+//        // 准备数组，装用户数据
+//        String[] users = new String[1000];
+//        // 数组角标
+//        int index = 0;
+//        for (int i = 1; i <= 1000000; i++) {
+//            // 赋值
+//            users[index++] = "user_" + i;
+//            // 每1000条发送一次
+//            if (i % 1000 == 0) {
+//                index = 0;
+//                stringRedisTemplate.opsForHyperLogLog().add("hll1", users);
+//            }
+//        }
+//        // 统计数量
+//        Long size = stringRedisTemplate.opsForHyperLogLog().size("hll1");
+//        System.out.println("size = " + size);
+//    }
 
+    @Test
+    void testHyperLogLog() {
+        String[] values = new String[1000];
+        int j = 0;
+        for (int i = 0; i < 1000000; i++) {
+            j = i % 1000;
+            values[j] = "user_" + i;
+            if(j == 999){
+                // 发送到Redis
+                stringRedisTemplate.opsForHyperLogLog().add("hll2", values);
+            }
+        }
+        // 统计数量
+        Long count = stringRedisTemplate.opsForHyperLogLog().size("hll2");
+        System.out.println("count = " + count);
+    }
 
 }
