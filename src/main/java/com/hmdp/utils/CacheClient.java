@@ -4,7 +4,6 @@ import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
-import com.hmdp.entity.Shop;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -20,6 +19,9 @@ import java.util.function.Function;
 @Slf4j
 public class CacheClient {
     private final StringRedisTemplate stringRedisTemplate;
+    
+    @Autowired(required = false)
+    private BloomFilterUtil bloomFilterUtil;
 
     public CacheClient(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
@@ -55,7 +57,7 @@ public class CacheClient {
     }
 
     /**
-     * 对缓存穿透进行封装
+     * 对缓存穿透进行封装（不带布隆过滤器）
      * 参数，key前缀，id，类的泛型（返回值的类型），调用的函数，过期时间和时间类型
      * @param keyPrefix
      * @param id
@@ -99,6 +101,64 @@ public class CacheClient {
         //存在，将数据库内容返回给前端
         return r;
 
+    }
+
+    /**
+     * 带布隆过滤器的缓存穿透解决方案（推荐使用）
+     * 在查询数据库前先通过布隆过滤器判断ID是否存在，避免无效的数据库查询
+     * 
+     * @param keyPrefix 缓存key前缀
+     * @param id 查询的ID
+     * @param clazz 返回类型
+     * @param dbFallBack 数据库查询函数
+     * @param time 缓存过期时间
+     * @param timeUnit 时间单位
+     * @param bloomFilterName 布隆过滤器名称（如：RedisConstants.BLOOM_FILTER_SHOP）
+     * @return 查询结果
+     * @param <R> 返回类型
+     * @param <ID> ID类型
+     */
+    public <R,ID> R queryWithBloomFilter(String keyPrefix, ID id, Class<R> clazz, 
+                                         Function<ID,R> dbFallBack, Long time, TimeUnit timeUnit,
+                                         String bloomFilterName) {
+        // 1. 首先根据id查询redis
+        String key = keyPrefix + id;
+        String json = stringRedisTemplate.opsForValue().get(key);
+        
+        // 2. 缓存命中，直接返回
+        if (StrUtil.isNotBlank(json)) {
+            R r = JSONUtil.toBean(json, clazz);
+            return r;
+        }
+        
+        // 3. 缓存未命中，先通过布隆过滤器判断
+        if (bloomFilterUtil != null && StrUtil.isNotBlank(bloomFilterName)) {
+            String idStr = String.valueOf(id);
+            // 布隆过滤器判断：如果返回false，说明ID一定不存在，直接返回null
+            if (!bloomFilterUtil.mightContain(bloomFilterName, idStr)) {
+                log.debug("布隆过滤器判断ID {} 不存在，直接返回null，避免数据库查询", id);
+                // 缓存空值，防止缓存穿透（即使布隆过滤器判断不存在，也缓存空值，因为可能有误判）
+                stringRedisTemplate.opsForValue().set(key, "", time, timeUnit);
+                return null;
+            }
+            // 布隆过滤器返回true，说明可能存在，继续查询数据库
+            log.debug("布隆过滤器判断ID {} 可能存在，继续查询数据库", id);
+        }
+        
+        // 4. 查询数据库
+        R r = dbFallBack.apply(id);
+        
+        // 5. 数据库查询结果为空
+        if (r == null) {
+            // 缓存空值，防止缓存穿透
+            stringRedisTemplate.opsForValue().set(key, "", time, timeUnit);
+            return null;
+        }
+        
+        // 6. 数据库查询到数据，存入缓存并返回
+        String jsonStr = JSONUtil.toJsonStr(r);
+        stringRedisTemplate.opsForValue().set(key, jsonStr, time, timeUnit);
+        return r;
     }
 
 

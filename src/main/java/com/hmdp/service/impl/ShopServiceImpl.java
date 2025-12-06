@@ -16,10 +16,12 @@ import com.hmdp.utils.RedisData;
 import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.geo.Distance;
 import org.springframework.data.geo.GeoResult;
 import org.springframework.data.geo.GeoResults;
 import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.domain.geo.GeoReference;
 import org.springframework.stereotype.Service;
@@ -27,10 +29,7 @@ import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * <p>
@@ -48,6 +47,11 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private CacheClient cacheClient;
+    @Qualifier("redisTemplate")
+    @Autowired
+    private RedisTemplate redisTemplate;
+    @Autowired(required = false)
+    private com.hmdp.utils.BloomFilterUtil bloomFilterUtil;
 
 
     @Override
@@ -59,10 +63,20 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 //        Shop shop = queryWithMutex(id);
         //逻辑过期
 //        Shop shop = queryWithLogicExpire(id);
-        //封装好的缓存穿透
+        //封装好的缓存穿透（不带布隆过滤器）
 //        Shop shop = cacheClient.queryWithPassThrow(RedisConstants.CACHE_SHOP_KEY,id,Shop.class,this::getById,RedisConstants.CACHE_SHOP_TTL,TimeUnit.MINUTES);
         //封装好的逻辑过期
-        Shop shop = cacheClient.queryWithLogicExpire(RedisConstants.CACHE_SHOP_KEY,RedisConstants.LOCK_SHOP_KEY,id,Shop.class,this::getById,RedisConstants.LOGIN_CODE_TTL,TimeUnit.SECONDS);
+//        Shop shop = cacheClient.queryWithLogicExpire(RedisConstants.CACHE_SHOP_KEY,RedisConstants.LOCK_SHOP_KEY,id,Shop.class,this::getById,RedisConstants.LOGIN_CODE_TTL,TimeUnit.SECONDS);
+        //带布隆过滤器的缓存穿透（推荐使用，性能更好）
+        Shop shop = cacheClient.queryWithBloomFilter(
+                RedisConstants.CACHE_SHOP_KEY,
+                id,
+                Shop.class,
+                this::getById,
+                RedisConstants.CACHE_SHOP_TTL,
+                TimeUnit.MINUTES,
+                RedisConstants.BLOOM_FILTER_SHOP
+        );
 
 
         if (shop == null) {
@@ -78,10 +92,31 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if (id == null) {
            return Result.fail("店铺id不存在");
         }
+        
+        // 判断是新增还是更新
+        boolean isNew = getById(id) == null;
+        
         updateById(shop);
+        
+        // 如果是新增店铺，需要添加到布隆过滤器
+        if (isNew && bloomFilterUtil != null) {
+            bloomFilterUtil.add(RedisConstants.BLOOM_FILTER_SHOP, String.valueOf(id));
+            log.info("新增店铺 {}，已添加到布隆过滤器", id);
+        }
+        
         //删除缓存
         String key = RedisConstants.CACHE_SHOP_KEY+id;
         stringRedisTemplate.delete(key);
+        //增加延迟双删的逻辑
+        CompletableFuture.runAsync(()->{
+            try {
+                // 延迟1秒（根据业务调整，无需太长）
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            stringRedisTemplate.delete(key);
+        });
         return Result.ok();
     }
 
