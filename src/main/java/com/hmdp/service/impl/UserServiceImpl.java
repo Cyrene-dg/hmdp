@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
@@ -27,6 +28,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -46,6 +49,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 //    保存用户到redis：key为随机生成的Token，String，value为hash类型储存的用户
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    private static final ScheduledExecutorService LOGOUT_DELAY_DELETE_EXECUTOR =
+            Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "logout-delay-delete"));
 
     /**
      * 发送短信验证码
@@ -176,6 +182,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         return Result.ok(count);
+    }
+
+    @Override
+    public Result logout(String token) {
+        if (StrUtil.isBlank(token)) {
+            return Result.ok();
+        }
+        String key = RedisConstants.LOGIN_USER_KEY + token;
+        stringRedisTemplate.delete(key);
+        LOGOUT_DELAY_DELETE_EXECUTOR.schedule(
+                () -> stringRedisTemplate.delete(key),
+                RedisConstants.LOGIN_TOKEN_DELAY_DELETE_MS,
+                TimeUnit.MILLISECONDS
+        );
+        return Result.ok();
     }
 
     private User creatUserWithPhone(String phone) {

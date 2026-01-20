@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * <p>
@@ -57,8 +58,9 @@ public class UserController {
      * @return 无
      */
     @PostMapping("/logout")
-    public Result logout(){
-        return Result.ok();
+    public Result logout(HttpServletRequest request){
+        String token = request.getHeader("Authorization");
+        return userService.logout(token);
     }
 
     @GetMapping("/me")
