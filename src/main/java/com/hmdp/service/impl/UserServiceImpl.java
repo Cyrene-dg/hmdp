@@ -14,6 +14,7 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.TokenDeleteScheduler;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -28,8 +29,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -49,9 +48,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 //    保存用户到redis：key为随机生成的Token，String，value为hash类型储存的用户
     @Resource
     private StringRedisTemplate stringRedisTemplate;
-
-    private static final ScheduledExecutorService LOGOUT_DELAY_DELETE_EXECUTOR =
-            Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "logout-delay-delete"));
+    @Resource
+    private TokenDeleteScheduler tokenDeleteScheduler;
 
     /**
      * 发送短信验证码
@@ -191,11 +189,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         String key = RedisConstants.LOGIN_USER_KEY + token;
         stringRedisTemplate.delete(key);
-        LOGOUT_DELAY_DELETE_EXECUTOR.schedule(
-                () -> stringRedisTemplate.delete(key),
-                RedisConstants.LOGIN_TOKEN_DELAY_DELETE_MS,
-                TimeUnit.MILLISECONDS
-        );
+        tokenDeleteScheduler.deleteWithDelay(key, RedisConstants.LOGIN_TOKEN_DELAY_DELETE_MS);
         return Result.ok();
     }
 
