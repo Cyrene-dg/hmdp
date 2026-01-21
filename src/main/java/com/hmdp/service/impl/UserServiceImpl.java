@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
 import cn.hutool.core.lang.UUID;
 import cn.hutool.core.util.RandomUtil;
+import cn.hutool.core.util.StrUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
@@ -13,6 +14,7 @@ import com.hmdp.mapper.UserMapper;
 import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RegexUtils;
+import com.hmdp.utils.TokenDeleteScheduler;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -46,6 +48,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 //    保存用户到redis：key为随机生成的Token，String，value为hash类型储存的用户
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+    @Resource
+    private TokenDeleteScheduler tokenDeleteScheduler;
 
     /**
      * 发送短信验证码
@@ -176,6 +180,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         return Result.ok(count);
+    }
+
+    @Override
+    public Result logout(String token) {
+        if (StrUtil.isBlank(token)) {
+            return Result.ok();
+        }
+        String key = RedisConstants.LOGIN_USER_KEY + token;
+        stringRedisTemplate.delete(key);
+        tokenDeleteScheduler.deleteWithDelay(key, RedisConstants.LOGIN_TOKEN_DELAY_DELETE_MS);
+        return Result.ok();
     }
 
     private User creatUserWithPhone(String phone) {
