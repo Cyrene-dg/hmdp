@@ -7,6 +7,7 @@ import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.LoginFormDTO;
 import com.hmdp.dto.Result;
+import com.hmdp.dto.TokenDTO;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.User;
 import com.hmdp.mapper.UserMapper;
@@ -88,34 +89,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
             //调用创建新用户的方法的逻辑
             user = creatUserWithPhone(phone);
         }
-        //存在
-        //保存到redis中
-        //键，生成token
-        String token = UUID.randomUUID().toString(true);
-        //值，将user对象转换成map
         UserDTO userDTO = new UserDTO();
         BeanUtils.copyProperties(user,userDTO);
+        TokenDTO tokenDTO = generateTokenPair(userDTO);
+        return Result.ok(tokenDTO);
+    }
 
-        //这里用到了bean转map工具
-//        Map<String, Object> hashMap = BeanUtil.beanToMap(userDTO);
-        //要求不能够有Long类型
-        Map<String, Object> userMap = BeanUtil.beanToMap(
-                userDTO,
-                new HashMap<>(),
-                CopyOptions.create()
-                        .setIgnoreNullValue(true)
-                        .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString())
-        );
-
-
-        //将键和值储存到redis里
-        String tokenKey = RedisConstants.LOGIN_USER_KEY + token;
-        stringRedisTemplate.opsForHash().putAll(tokenKey,userMap);
-
-        //设置有效期
-        //存在问题，这个到期时间设计的是三十分钟，需要再拦截器里刷新时间，防止用户处于登录操作状态的时候丢失储存数据报
-        stringRedisTemplate.expire(tokenKey,RedisConstants.LOGIN_CODE_TTL, TimeUnit.MINUTES);
-        return Result.ok(token);
+    @Override
+    public Result refreshToken(String refreshToken) {
+        if (refreshToken == null || refreshToken.trim().isEmpty()) {
+            return Result.fail("refreshToken不能为空");
+        }
+        String refreshTokenKey = RedisConstants.REFRESH_TOKEN_KEY + refreshToken;
+        Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(refreshTokenKey);
+        if (userMap == null || userMap.isEmpty()) {
+            return Result.fail("refreshToken无效或已过期");
+        }
+        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
+        TokenDTO tokenDTO = generateTokenPair(userDTO);
+        return Result.ok(tokenDTO);
     }
 
     @Override
@@ -176,6 +168,28 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
 
         return Result.ok(count);
+    }
+
+    private TokenDTO generateTokenPair(UserDTO userDTO) {
+        Map<String, Object> userMap = BeanUtil.beanToMap(
+                userDTO,
+                new HashMap<>(),
+                CopyOptions.create()
+                        .setIgnoreNullValue(true)
+                        .setFieldValueEditor((fieldName, fieldValue) -> fieldValue.toString())
+        );
+
+        String accessToken = UUID.randomUUID().toString(true);
+        String accessTokenKey = RedisConstants.LOGIN_USER_KEY + accessToken;
+        stringRedisTemplate.opsForHash().putAll(accessTokenKey, userMap);
+        stringRedisTemplate.expire(accessTokenKey, RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
+
+        String refreshToken = UUID.randomUUID().toString(true);
+        String refreshTokenKey = RedisConstants.REFRESH_TOKEN_KEY + refreshToken;
+        stringRedisTemplate.opsForHash().putAll(refreshTokenKey, userMap);
+        stringRedisTemplate.expire(refreshTokenKey, RedisConstants.REFRESH_TOKEN_TTL, TimeUnit.MINUTES);
+
+        return new TokenDTO(accessToken, refreshToken, "Bearer", RedisConstants.LOGIN_USER_TTL);
     }
 
     private User creatUserWithPhone(String phone) {

@@ -52,6 +52,11 @@ public class UserController {
         return userService.login(loginFormDTO, session);
     }
 
+    @PostMapping("/refresh")
+    public Result refresh(@RequestHeader("refreshToken") String refreshToken){
+        return userService.refreshToken(refreshToken);
+    }
+
     /**
      * 登出功能
      * @return 无

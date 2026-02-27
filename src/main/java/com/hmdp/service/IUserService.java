@@ -32,6 +32,8 @@ public interface IUserService extends IService<User> {
      */
     Result login(LoginFormDTO loginFormDTO, HttpSession session);
 
+    Result refreshToken(String refreshToken);
+
     Result sign();
 
     Result signCount();
