@@ -28,7 +28,8 @@ public class MvcConfig implements WebMvcConfigurer {
                         "/upload/**",
                         "/blog/hot",
                         "/user/code",
-                        "/user/login"
+                        "/user/login",
+                        "/user/refresh"
                 ).order(1);
         registry.addInterceptor(new RefreshTokenInterceptor(stringRedisTemplate)).addPathPatterns("/**").order(0);
     }

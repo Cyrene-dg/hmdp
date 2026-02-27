@@ -9,7 +9,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class RefreshTokenInterceptor implements HandlerInterceptor {
@@ -26,6 +25,9 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         //获取当前token
         String token = request.getHeader("Authorization");
 //        log.info("从Authorization头获取到的token：{}", token);
+        if (token == null || token.trim().isEmpty()) {
+            return true;
+        }
         //从redis里获取当前用户
         String key = RedisConstants.LOGIN_USER_KEY + token;
 //        log.info("生成的Redis查询key：{}", key); // 新增：打印Redis的key
@@ -37,8 +39,6 @@ public class RefreshTokenInterceptor implements HandlerInterceptor {
         }
         //将用户从hash转换成bean以后才能存threadlocal
         UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
-        //刷新时间
-        stringRedisTemplate.expire(key,RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
         UserHolder.saveUser(userDTO);
         return true;
     }
