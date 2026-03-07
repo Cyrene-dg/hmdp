@@ -30,15 +30,33 @@ import java.util.concurrent.TimeUnit;
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
+    private static final DefaultRedisScript<Long> TOKEN_BUCKET_SCRIPT;
+
     private static final String PENDING_ORDER_KEY_PREFIX = "seckill:pending:order:";
     private static final String DEAD_ORDER_KEY_PREFIX = "seckill:dead:order:";
+
     private static final long PENDING_ORDER_TTL_SECONDS = 600L;
     private static final long DEAD_ORDER_TTL_SECONDS = 7 * 24 * 3600L;
+
+    private static final String RATE_LIMIT_GLOBAL_KEY = "rate:limit:seckill:global";
+    private static final String RATE_LIMIT_VOUCHER_KEY_PREFIX = "rate:limit:seckill:voucher:";
+    private static final String RATE_LIMIT_USER_KEY_PREFIX = "rate:limit:seckill:user:";
+
+    private static final int GLOBAL_BUCKET_CAPACITY = 300;
+    private static final double GLOBAL_BUCKET_REFILL_RATE = 120D;
+    private static final int VOUCHER_BUCKET_CAPACITY = 120;
+    private static final double VOUCHER_BUCKET_REFILL_RATE = 60D;
+    private static final int USER_BUCKET_CAPACITY = 5;
+    private static final double USER_BUCKET_REFILL_RATE = 1D;
 
     static {
         SECKILL_SCRIPT = new DefaultRedisScript<>();
         SECKILL_SCRIPT.setLocation(new ClassPathResource("seckill.lua"));
         SECKILL_SCRIPT.setResultType(Long.class);
+
+        TOKEN_BUCKET_SCRIPT = new DefaultRedisScript<>();
+        TOKEN_BUCKET_SCRIPT.setLocation(new ClassPathResource("token_bucket.lua"));
+        TOKEN_BUCKET_SCRIPT.setResultType(Long.class);
     }
 
     @Resource
@@ -53,6 +71,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Override
     public Result secKillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
+        if (!passRateLimit(userId, voucherId)) {
+            return Result.fail("Too many requests, please try again later");
+        }
+
         long orderId = redisIdWoker.nexId("order");
 
         Long result = stringRedisTemplate.execute(
@@ -62,12 +84,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         );
 
         if (result == null) {
-            return Result.fail("下单失败，请重试");
+            return Result.fail("Order failed, please retry");
         }
 
         int r = result.intValue();
         if (r != 0) {
-            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
+            return Result.fail(r == 1 ? "Stock not enough" : "Duplicate order is not allowed");
         }
 
         VoucherOrder voucherOrder = new VoucherOrder();
@@ -85,7 +107,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             );
             clearPendingOrder(orderId);
         } catch (Exception e) {
-            log.error("秒杀订单投递MQ失败，orderId={}", orderId, e);
+            log.error("Failed to publish seckill order to MQ, orderId={}", orderId, e);
         }
 
         return Result.ok(orderId);
@@ -98,7 +120,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             processVoucherOrder(voucherOrder);
         } catch (Exception e) {
             // With default-requeue-rejected=false, throwing exception will route message to DLQ.
-            log.error("消费秒杀订单失败，投递死信，order={}", voucherOrder, e);
+            log.error("Failed to consume seckill order, route to DLQ, order={}", voucherOrder, e);
             throw new RuntimeException(e);
         }
     }
@@ -106,7 +128,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_DLX_QUEUE)
     public void consumeDeadLetterOrder(VoucherOrder voucherOrder) {
         if (voucherOrder == null || voucherOrder.getId() == null) {
-            log.error("收到无效死信消息: {}", voucherOrder);
+            log.error("Received invalid dead-letter order message: {}", voucherOrder);
             return;
         }
 
@@ -117,11 +139,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                     DEAD_ORDER_TTL_SECONDS,
                     TimeUnit.SECONDS
             );
-            log.error("秒杀订单进入死信队列，已记录待人工处理，orderId={}, userId={}, voucherId={}",
+            log.error("Order entered DLQ, waiting for manual handling, orderId={}, userId={}, voucherId={}",
                     voucherOrder.getId(), voucherOrder.getUserId(), voucherOrder.getVoucherId());
         } catch (Exception e) {
             // Avoid throwing exception here, or DLQ consumer may loop.
-            log.error("记录死信订单失败，order={}", voucherOrder, e);
+            log.error("Failed to record dead-letter order, order={}", voucherOrder, e);
         }
     }
 
@@ -143,7 +165,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             try {
                 voucherOrder = JSONUtil.toBean(json, VoucherOrder.class);
             } catch (Exception e) {
-                log.error("解析待补偿订单失败，key={}", key, e);
+                log.error("Failed to parse pending order, key={}", key, e);
                 stringRedisTemplate.delete(key);
                 continue;
             }
@@ -156,7 +178,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 );
                 clearPendingOrder(voucherOrder.getId());
             } catch (Exception e) {
-                log.error("重试投递秒杀订单失败，orderId={}", voucherOrder.getId(), e);
+                log.error("Retry publish failed for pending order, orderId={}", voucherOrder.getId(), e);
             }
         }
     }
@@ -164,7 +186,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private void processVoucherOrder(VoucherOrder voucherOrder) {
         if (voucherOrder == null || voucherOrder.getId() == null || voucherOrder.getUserId() == null || voucherOrder.getVoucherId() == null) {
             // Invalid payload is treated as business drop; no retry needed.
-            log.warn("秒杀订单消息不完整，忽略处理：{}", voucherOrder);
+            log.warn("Incomplete seckill order payload, skip: {}", voucherOrder);
             return;
         }
 
@@ -186,14 +208,57 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         if (!update) {
             // Business sold out: ack directly, no retry.
-            log.warn("扣减库存失败，voucherId={}, orderId={}", voucherId, voucherOrder.getId());
+            log.warn("Stock update failed, voucherId={}, orderId={}", voucherId, voucherOrder.getId());
             return;
         }
 
         boolean saved = save(voucherOrder);
         if (!saved) {
-            throw new IllegalStateException("保存订单失败, orderId=" + voucherOrder.getId());
+            throw new IllegalStateException("Failed to save order, orderId=" + voucherOrder.getId());
         }
+    }
+
+    private boolean passRateLimit(Long userId, Long voucherId) {
+        long now = System.currentTimeMillis();
+
+        boolean userAllowed = tryAcquireToken(
+                RATE_LIMIT_USER_KEY_PREFIX + userId,
+                USER_BUCKET_CAPACITY,
+                USER_BUCKET_REFILL_RATE,
+                now
+        );
+        if (!userAllowed) {
+            return false;
+        }
+
+        boolean voucherAllowed = tryAcquireToken(
+                RATE_LIMIT_VOUCHER_KEY_PREFIX + voucherId,
+                VOUCHER_BUCKET_CAPACITY,
+                VOUCHER_BUCKET_REFILL_RATE,
+                now
+        );
+        if (!voucherAllowed) {
+            return false;
+        }
+
+        return tryAcquireToken(
+                RATE_LIMIT_GLOBAL_KEY,
+                GLOBAL_BUCKET_CAPACITY,
+                GLOBAL_BUCKET_REFILL_RATE,
+                now
+        );
+    }
+
+    private boolean tryAcquireToken(String key, int capacity, double refillRate, long nowMillis) {
+        Long allowed = stringRedisTemplate.execute(
+                TOKEN_BUCKET_SCRIPT,
+                Collections.singletonList(key),
+                String.valueOf(nowMillis),
+                String.valueOf(capacity),
+                String.valueOf(refillRate),
+                "1"
+        );
+        return allowed != null && allowed == 1L;
     }
 
     private void cachePendingOrder(VoucherOrder voucherOrder) {
@@ -222,6 +287,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     @Override
     public Result createVoucherOrder(Long voucherId) {
-        return Result.fail("该方法已废弃，请调用秒杀接口");
+        return Result.fail("This method is deprecated, please call seckill endpoint");
     }
 }
