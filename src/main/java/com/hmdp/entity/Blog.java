@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
+import org.springframework.context.ApplicationContext;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
@@ -90,6 +91,5 @@ public class Blog implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
-
 
 }

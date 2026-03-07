@@ -21,10 +21,23 @@ spring:
         max-idle: 10
         min-idle: 1
         time-between-eviction-runs: 10s
+  rabbitmq:
+    host: 127.0.0.1
+    port: 5672
+    username: guest
+    password: guest
+    virtual-host: /
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
   jackson:
-    default-property-inclusion: non_null # JSON处理时忽略非空字段
+    default-property-inclusion: non_null # ignore null fields in JSON
 mybatis-plus:
-  type-aliases-package: com.hmdp.entity # 别名扫描包
+  type-aliases-package: com.hmdp.entity # entity aliases
 logging:
   level:
     com.hmdp: debug
