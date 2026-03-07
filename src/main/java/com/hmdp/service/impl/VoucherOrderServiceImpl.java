@@ -218,9 +218,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    //限流的具体方法
     private boolean passRateLimit(Long userId, Long voucherId) {
+        //获取当前时间戳
         long now = System.currentTimeMillis();
 
+        //用户限流，看看是否通过限流
         boolean userAllowed = tryAcquireToken(
                 RATE_LIMIT_USER_KEY_PREFIX + userId,
                 USER_BUCKET_CAPACITY,
@@ -231,6 +234,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return false;
         }
 
+        //优惠券限流
         boolean voucherAllowed = tryAcquireToken(
                 RATE_LIMIT_VOUCHER_KEY_PREFIX + voucherId,
                 VOUCHER_BUCKET_CAPACITY,
@@ -241,6 +245,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return false;
         }
 
+        //全局桶限流
         return tryAcquireToken(
                 RATE_LIMIT_GLOBAL_KEY,
                 GLOBAL_BUCKET_CAPACITY,
@@ -249,7 +254,9 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         );
     }
 
+    //执行令牌桶脚本，参数：key，桶容量，令牌恢复时间，当前时间
     private boolean tryAcquireToken(String key, int capacity, double refillRate, long nowMillis) {
+//        执行lua脚本
         Long allowed = stringRedisTemplate.execute(
                 TOKEN_BUCKET_SCRIPT,
                 Collections.singletonList(key),
@@ -258,6 +265,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 String.valueOf(refillRate),
                 "1"
         );
+//        将返回值转成boolean
         return allowed != null && allowed == 1L;
     }
 
