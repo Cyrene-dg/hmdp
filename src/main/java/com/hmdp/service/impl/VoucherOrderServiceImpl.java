@@ -25,21 +25,15 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/**
- * <p>
- *  鏈嶅姟瀹炵幇绫?
- * </p>
- *
- * @author 铏庡摜
- * @since 2021-12-22
- */
 @Service
 @Slf4j
 public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, VoucherOrder> implements IVoucherOrderService {
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     private static final String PENDING_ORDER_KEY_PREFIX = "seckill:pending:order:";
+    private static final String DEAD_ORDER_KEY_PREFIX = "seckill:dead:order:";
     private static final long PENDING_ORDER_TTL_SECONDS = 600L;
+    private static final long DEAD_ORDER_TTL_SECONDS = 7 * 24 * 3600L;
 
     static {
         SECKILL_SCRIPT = new DefaultRedisScript<>();
@@ -81,7 +75,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
 
-        // 先落一份待投递记录，MQ发送失败时由定时任务补偿。
+        // Producer-side compensation: if MQ send fails, retry from Redis pending set.
         cachePendingOrder(voucherOrder);
         try {
             rabbitTemplate.convertAndSend(
@@ -98,9 +92,37 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_QUEUE)
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void consumeVoucherOrder(VoucherOrder voucherOrder) {
-        processVoucherOrder(voucherOrder);
+        try {
+            processVoucherOrder(voucherOrder);
+        } catch (Exception e) {
+            // With default-requeue-rejected=false, throwing exception will route message to DLQ.
+            log.error("消费秒杀订单失败，投递死信，order={}", voucherOrder, e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_DLX_QUEUE)
+    public void consumeDeadLetterOrder(VoucherOrder voucherOrder) {
+        if (voucherOrder == null || voucherOrder.getId() == null) {
+            log.error("收到无效死信消息: {}", voucherOrder);
+            return;
+        }
+
+        try {
+            stringRedisTemplate.opsForValue().set(
+                    deadOrderKey(voucherOrder.getId()),
+                    JSONUtil.toJsonStr(voucherOrder),
+                    DEAD_ORDER_TTL_SECONDS,
+                    TimeUnit.SECONDS
+            );
+            log.error("秒杀订单进入死信队列，已记录待人工处理，orderId={}, userId={}, voucherId={}",
+                    voucherOrder.getId(), voucherOrder.getUserId(), voucherOrder.getVoucherId());
+        } catch (Exception e) {
+            // Avoid throwing exception here, or DLQ consumer may loop.
+            log.error("记录死信订单失败，order={}", voucherOrder, e);
+        }
     }
 
     @Scheduled(fixedDelay = 5000L)
@@ -141,6 +163,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private void processVoucherOrder(VoucherOrder voucherOrder) {
         if (voucherOrder == null || voucherOrder.getId() == null || voucherOrder.getUserId() == null || voucherOrder.getVoucherId() == null) {
+            // Invalid payload is treated as business drop; no retry needed.
             log.warn("秒杀订单消息不完整，忽略处理：{}", voucherOrder);
             return;
         }
@@ -148,11 +171,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = voucherOrder.getUserId();
         Long voucherId = voucherOrder.getVoucherId();
 
+        // Business duplicate: ack directly, no retry.
         Integer count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
         if (count > 0) {
             return;
         }
 
+        // DB-side optimistic stock check (second safety net).
         boolean update = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
@@ -160,11 +185,15 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .update();
 
         if (!update) {
+            // Business sold out: ack directly, no retry.
             log.warn("扣减库存失败，voucherId={}, orderId={}", voucherId, voucherOrder.getId());
             return;
         }
 
-        save(voucherOrder);
+        boolean saved = save(voucherOrder);
+        if (!saved) {
+            throw new IllegalStateException("保存订单失败, orderId=" + voucherOrder.getId());
+        }
     }
 
     private void cachePendingOrder(VoucherOrder voucherOrder) {
@@ -185,6 +214,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private String pendingOrderKey(Long orderId) {
         return PENDING_ORDER_KEY_PREFIX + orderId;
+    }
+
+    private String deadOrderKey(Long orderId) {
+        return DEAD_ORDER_KEY_PREFIX + orderId;
     }
 
     @Override
