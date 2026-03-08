@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -19,238 +18,91 @@ import java.util.function.Function;
 @Slf4j
 public class CacheClient {
     private final StringRedisTemplate stringRedisTemplate;
-    
-    @Autowired(required = false)
-    private BloomFilterUtil bloomFilterUtil;
+
+    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
     public CacheClient(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
-    /**
-     * 方法一，不带逻辑过期的存数据
-     * 参数：键，值，过期时间,时间单位
-     * @param key
-     * @param value
-     * @param time
-     * @param timeUnit
-     */
     public void set(String key, Object value, Long time, TimeUnit timeUnit) {
-        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value),time,timeUnit);
+        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value), time, timeUnit);
     }
 
-    /**
-     * 方法二，带逻辑过期时间的存数据
-     * 参数，键，值，逻辑过期时间，时间单位
-     * @param key
-     * @param value
-     * @param time
-     * @param timeUnit
-     */
     public void setWithLogicExpire(String key, Object value, Long time, TimeUnit timeUnit) {
-        //设置逻辑过期
         RedisData redisData = new RedisData();
         redisData.setData(value);
         redisData.setExpireTime(LocalDateTime.now().plusSeconds(timeUnit.toSeconds(time)));
-        //写入redis
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(redisData));
     }
 
-    /**
-     * 对缓存穿透进行封装（不带布隆过滤器）
-     * 参数，key前缀，id，类的泛型（返回值的类型），调用的函数，过期时间和时间类型
-     * @param keyPrefix
-     * @param id
-     * @param clazz
-     * @param dbFallBack
-     * @param time
-     * @param timeUnit
-     * @return
-     * @param <R>
-     * @param <ID>
-     */
-    public <R,ID> R queryWithPassThrow(String keyPrefix, ID id, Class<R> clazz, Function<ID,R> dbFallBack,Long time
-    ,TimeUnit timeUnit) {
-        //首先根据id查询redis
-        String key = keyPrefix + id;
-
-        String json = stringRedisTemplate.opsForValue().get(key);
-        //存在,且不是空值，直接返回
-        if (StrUtil.isNotBlank(json)) {
-            //转成java对象
-            R r = JSONUtil.toBean(json, clazz);
-            return r;
-        }
-        //存在，且是空值(不为空不为null就是空值了)
-        if(json != null){
-            return null;
-        }
-        //不存在，查询数据库
-        R r = dbFallBack.apply(id);
-        //数据库为空，保存到redis里空值
-
-        //解决缓存穿透，将空值存入redis里中，再次访问将不会到达数据库，其他的解决方案还有布隆过滤器，一种通过哈希函数先计算索引是否可能存在的过滤器，缓存穿透还需要主动解决，比如规范索引的格式，排除不符合格式的索引等等
-        if (r == null) {
-            stringRedisTemplate.opsForValue().set(key,"",time, timeUnit);
-            return null;
-        }
-        //存在，将数据库内容存入redis
-        String jsonStr = JSONUtil.toJsonStr(r);
-        stringRedisTemplate.opsForValue().set(key,jsonStr,time, timeUnit);
-
-        //存在，将数据库内容返回给前端
-        return r;
-
-    }
-
-    /**
-     * 带布隆过滤器的缓存穿透解决方案（推荐使用）
-     * 在查询数据库前先通过布隆过滤器判断ID是否存在，避免无效的数据库查询
-     * 
-     * @param keyPrefix 缓存key前缀
-     * @param id 查询的ID
-     * @param clazz 返回类型
-     * @param dbFallBack 数据库查询函数
-     * @param time 缓存过期时间
-     * @param timeUnit 时间单位
-     * @param bloomFilterName 布隆过滤器名称（如：RedisConstants.BLOOM_FILTER_SHOP）
-     * @return 查询结果
-     * @param <R> 返回类型
-     * @param <ID> ID类型
-     */
-    public <R,ID> R queryWithBloomFilter(String keyPrefix, ID id, Class<R> clazz, 
-                                         Function<ID,R> dbFallBack, Long time, TimeUnit timeUnit,
-                                         String bloomFilterName) {
-        // 1. 首先根据id查询redis
+    public <R, ID> R queryWithPassThrow(String keyPrefix, ID id, Class<R> clazz,
+                                        Function<ID, R> dbFallBack, Long time, TimeUnit timeUnit) {
         String key = keyPrefix + id;
         String json = stringRedisTemplate.opsForValue().get(key);
-        
-        // 2. 缓存命中，直接返回
+
         if (StrUtil.isNotBlank(json)) {
-            R r = JSONUtil.toBean(json, clazz);
-            return r;
+            return JSONUtil.toBean(json, clazz);
         }
-        
-        // 3. 缓存未命中，先通过布隆过滤器判断
-        if (bloomFilterUtil != null && StrUtil.isNotBlank(bloomFilterName)) {
-            String idStr = String.valueOf(id);
-            // 布隆过滤器判断：如果返回false，说明ID一定不存在，直接返回null
-            if (!bloomFilterUtil.mightContain(bloomFilterName, idStr)) {
-                log.debug("布隆过滤器判断ID {} 不存在，直接返回null，避免数据库查询", id);
-                // 缓存空值，防止缓存穿透（即使布隆过滤器判断不存在，也缓存空值，因为可能有误判）
-                stringRedisTemplate.opsForValue().set(key, "", time, timeUnit);
-                return null;
-            }
-            // 布隆过滤器返回true，说明可能存在，继续查询数据库
-            log.debug("布隆过滤器判断ID {} 可能存在，继续查询数据库", id);
-        }
-        
-        // 4. 查询数据库
-        R r = dbFallBack.apply(id);
-        
-        // 5. 数据库查询结果为空
-        if (r == null) {
-            // 缓存空值，防止缓存穿透
-            stringRedisTemplate.opsForValue().set(key, "", time, timeUnit);
+        if (json != null) {
             return null;
         }
-        
-        // 6. 数据库查询到数据，存入缓存并返回
-        String jsonStr = JSONUtil.toJsonStr(r);
-        stringRedisTemplate.opsForValue().set(key, jsonStr, time, timeUnit);
+
+        R r = dbFallBack.apply(id);
+        if (r == null) {
+            stringRedisTemplate.opsForValue().set(key, "", RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
+            return null;
+        }
+
+        stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(r), time, timeUnit);
         return r;
     }
 
-
-    /**
-     * 新建线程池
-     */
-    private  static final ExecutorService CATCH_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
-
-
-    public <R,ID> R queryWithLogicExpire(String keyPrefix,String lockPrefix,ID id,Class<R> clazz,Function<ID,R> dbFallBack,Long logicTime,TimeUnit timeUnit) throws InterruptedException {
-        //首先根据id查询redis
+    public <R, ID> R queryWithLogicExpire(String keyPrefix, String lockPrefix, ID id, Class<R> clazz,
+                                          Function<ID, R> dbFallBack, Long logicTime, TimeUnit timeUnit)
+            throws InterruptedException {
         String key = keyPrefix + id;
-
         String json = stringRedisTemplate.opsForValue().get(key);
-        //不存在，直接为null，先存进去再测试吧
+
         if (StrUtil.isBlank(json)) {
-           return null;
+            return null;
         }
-        //存在，将内容反序列化，校验逻辑过期时间是否过期
+
         RedisData redisData = JSONUtil.toBean(json, RedisData.class);
         LocalDateTime expireTime = redisData.getExpireTime();
-        //获取店铺
         JSONObject data = (JSONObject) redisData.getData();
         R r = JSONUtil.toBean(data, clazz);
 
-        //没有过期，返回当前店铺
-        if(expireTime.isAfter(LocalDateTime.now())){
+        if (expireTime.isAfter(LocalDateTime.now())) {
             return r;
         }
-        //过期了，新线程进行重建
-        //先获取锁，再检查一遍过期了没，然后开启新线程
-        boolean lock = getLock(lockPrefix + id);
 
+        String lockKey = lockPrefix + id;
+        boolean lock = getLock(lockKey);
         if (lock) {
-            // 关键修改：获取锁后重新查询Redis，用最新数据判断是否需要重建（解决第一点问题）
-            String latestJson = stringRedisTemplate.opsForValue().get(key);
-            if (StrUtil.isNotBlank(latestJson)) {
-                RedisData latestRedisData = null;
+            CACHE_REBUILD_EXECUTOR.submit(() -> {
                 try {
-                    latestRedisData = JSONUtil.toBean(latestJson, RedisData.class);
+                    R latest = dbFallBack.apply(id);
+                    setWithLogicExpire(key, latest, logicTime, timeUnit);
                 } catch (Exception e) {
-                    stringRedisTemplate.delete(key);
-                    log.error("重新查询Redis后反序列化失败，key:{}", key, e);
-                    realiseLock(lockPrefix + id); // 释放锁
-                    return r; // 返回旧数据
+                    log.error("Rebuild cache failed, key={}", key, e);
+                } finally {
+                    releaseLock(lockKey);
                 }
-                LocalDateTime latestExpireTime = latestRedisData.getExpireTime();
-                // 最新数据未过期，无需重建，直接释放锁
-                if (latestExpireTime != null && latestExpireTime.isAfter(LocalDateTime.now())) {
-                    realiseLock(lockPrefix+ id);
-                    return JSONUtil.toBean((JSONObject) latestRedisData.getData(), clazz);
-                }}
+            });
+        }
 
-            //真的过期了，开启新线程
-            CATCH_REBUILD_EXECUTOR.submit(()->{
-                try {
-                    R r1 = dbFallBack.apply(id);
-                    //重建
-                    setWithLogicExpire(key,r1,logicTime,timeUnit);
-                }catch (Exception e){
-                    e.printStackTrace();
-                }finally {
-                    //释放锁
-                    this.realiseLock(lockPrefix + id);
-                }
-            });}
-
-        //返回旧数据
         return r;
     }
 
-
-
-    /**
-     * 获取互斥锁
-     * @param key
-     * @return
-     */
     private boolean getLock(String key) {
-        Boolean set = stringRedisTemplate.opsForValue().setIfAbsent(key, "", RedisConstants.LOCK_SHOP_TTL, TimeUnit.MINUTES);
+        Boolean set = stringRedisTemplate.opsForValue()
+                .setIfAbsent(key, "", RedisConstants.LOCK_SHOP_TTL, TimeUnit.MINUTES);
         return BooleanUtil.isTrue(set);
     }
 
-    /**
-     * 释放互斥锁
-     * @param key
-     * @return
-     */
-    private  boolean realiseLock(String key) {
-        Boolean delete = stringRedisTemplate.delete(key);
-        return BooleanUtil.isTrue(delete);
+    private boolean releaseLock(String key) {
+        Boolean deleted = stringRedisTemplate.delete(key);
+        return BooleanUtil.isTrue(deleted);
     }
-
-
 }
