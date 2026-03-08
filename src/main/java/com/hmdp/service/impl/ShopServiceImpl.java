@@ -48,6 +48,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+    //创建更新店铺直接存进布隆
     @Override
     public Result createShop(Shop shop) {
         if (shop == null) {
@@ -121,22 +122,27 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shops);
     }
 
+    //使用布隆查询
     private Shop queryShopWithBloomFilter(Long id) {
         String key = RedisConstants.CACHE_SHOP_KEY + id;
         String cacheValue = stringRedisTemplate.opsForValue().get(key);
 
+        //redis里有店铺，就直接拿到json，无需查找数据库
         if (StrUtil.isNotBlank(cacheValue)) {
             return JSONUtil.toBean(cacheValue, Shop.class);
         }
+        //空值的话就出发了空值缓存逻辑
         if (cacheValue != null) {
             return null;
         }
 
+        //查布隆，一定没有的情况下缓存空置
         if (!shopBloomFilterService.mightContain(id)) {
             stringRedisTemplate.opsForValue().set(key, "", RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);
             return null;
         }
 
+        //真正开始查询数据库，查店铺id，重建缓存，返回查到的店铺，还没查到就还存空值
         Shop shop = getById(id);
         if (shop == null) {
             stringRedisTemplate.opsForValue().set(key, "", RedisConstants.CACHE_NULL_TTL, TimeUnit.MINUTES);

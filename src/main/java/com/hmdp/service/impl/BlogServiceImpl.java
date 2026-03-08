@@ -18,21 +18,21 @@ import com.hmdp.service.IUserService;
 import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.SystemConstants;
 import com.hmdp.utils.UserHolder;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static net.sf.jsqlparser.util.validation.metadata.NamedObject.user;
 
 /**
  * <p>
@@ -87,7 +87,8 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         // 获取当前页数据
         List<Blog> records = page.getRecords();
         // 查询用户
-        records.forEach(blog -> { buildBlog(blog); isLikedBlog(blog); });
+        fillBlogUserInfo(records);
+        records.forEach(this::isLikedBlog);
         return Result.ok(records);
 
     }
@@ -219,9 +220,34 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     private Blog buildBlog(Blog blog) {
         Long userId = blog.getUserId();
         User user = userService.getById(userId);
-        blog.setIcon(user.getIcon());
-        blog.setName(user.getNickName());
+        if (user != null) {
+            blog.setIcon(user.getIcon());
+            blog.setName(user.getNickName());
+        }
         return blog;
+    }
+
+    private void fillBlogUserInfo(List<Blog> blogs) {
+        if (blogs == null || blogs.isEmpty()) {
+            return;
+        }
+        List<Long> userIds = blogs.stream()
+                .map(Blog::getUserId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .collect(Collectors.toList());
+        if (userIds.isEmpty()) {
+            return;
+        }
+        Map<Long, User> userMap = new HashMap<>();
+        userService.listByIds(userIds).forEach(user -> userMap.put(user.getId(), user));
+        blogs.forEach(blog -> {
+            User user = userMap.get(blog.getUserId());
+            if (user != null) {
+                blog.setIcon(user.getIcon());
+                blog.setName(user.getNickName());
+            }
+        });
     }
 
 
@@ -230,7 +256,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      * @param blog
      */
     private void isLikedBlog(Blog blog) {
-        Long userId = UserHolder.getUser().getId();
+        UserDTO user = UserHolder.getUser();
+        if (user == null) {
+            blog.setIsLike(Boolean.FALSE);
+            return;
+        }
+        Long userId = user.getId();
         Long id = blog.getId();
         Double isLiked = stringRedisTemplate.opsForZSet().score(RedisConstants.BLOG_LIKED_KEY + id,userId.toString());
         blog.setIsLike(isLiked != null);

@@ -194,8 +194,13 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long voucherId = voucherOrder.getVoucherId();
 
         // Business duplicate: ack directly, no retry.
-        Integer count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-        if (count > 0) {
+        VoucherOrder existedOrder = query()
+                .select("id")
+                .eq("user_id", userId)
+                .eq("voucher_id", voucherId)
+                .last("LIMIT 1")
+                .one();
+        if (existedOrder != null) {
             return;
         }
 
