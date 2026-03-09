@@ -1,6 +1,7 @@
 package com.hmdp.service.impl;
 
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.Result;
@@ -11,19 +12,28 @@ import com.hmdp.utils.RabbitMqConstants;
 import com.hmdp.utils.RedisIdWoker;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 @Service
 @Slf4j
@@ -31,12 +41,29 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
     private static final DefaultRedisScript<Long> TOKEN_BUCKET_SCRIPT;
+    private static final DefaultRedisScript<Long> COMPENSATE_SCRIPT;
 
     private static final String PENDING_ORDER_KEY_PREFIX = "seckill:pending:order:";
+    private static final String PENDING_ORDER_RETRY_KEY_PREFIX = "seckill:pending:retry:";
+    private static final String PENDING_ORDER_RETURNED_KEY_PREFIX = "seckill:pending:returned:";
+    private static final String PENDING_ORDER_SCHEDULE_KEY = "seckill:pending:order:schedule";
     private static final String DEAD_ORDER_KEY_PREFIX = "seckill:dead:order:";
+    private static final String DLQ_RETRY_KEY_PREFIX = "seckill:dlq:retry:";
 
-    private static final long PENDING_ORDER_TTL_SECONDS = 600L;
+    private static final long PENDING_ORDER_TTL_SECONDS = 3600L;
     private static final long DEAD_ORDER_TTL_SECONDS = 7 * 24 * 3600L;
+    private static final int MAX_PENDING_RETRY = 8;
+    private static final int MAX_DLQ_RETRY = 3;
+    private static final int PENDING_RETRY_BATCH_SIZE = 200;
+    private static final long PENDING_RETRY_BASE_DELAY_MS = 1_000L;
+    private static final long PENDING_RETRY_MAX_DELAY_MS = 60_000L;
+
+    private static final String REQUEST_IDEMPOTENCY_KEY_PREFIX = "seckill:idem:req:";
+    private static final long REQUEST_IDEMPOTENCY_TTL_SECONDS = 30 * 60L;
+    private static final String IDEM_STATUS_PROCESSING = "PROCESSING";
+    private static final String IDEM_STATUS_SUCCESS = "SUCCESS";
+    private static final String IDEM_STATUS_FAILED = "FAILED";
+    private static final String IDEM_PROCESSING_MSG = "Request is processing, please retry with same X-Request-Id";
 
     private static final String RATE_LIMIT_GLOBAL_KEY = "rate:limit:seckill:global";
     private static final String RATE_LIMIT_VOUCHER_KEY_PREFIX = "rate:limit:seckill:voucher:";
@@ -57,6 +84,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         TOKEN_BUCKET_SCRIPT = new DefaultRedisScript<>();
         TOKEN_BUCKET_SCRIPT.setLocation(new ClassPathResource("token_bucket.lua"));
         TOKEN_BUCKET_SCRIPT.setResultType(Long.class);
+
+        COMPENSATE_SCRIPT = new DefaultRedisScript<>();
+        COMPENSATE_SCRIPT.setLocation(new ClassPathResource("compensation.lua"));
+        COMPENSATE_SCRIPT.setResultType(Long.class);
     }
 
     @Resource
@@ -68,21 +99,53 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RabbitTemplate rabbitTemplate;
 
+    @PostConstruct
+    public void initRabbitCallbacks() {
+        rabbitTemplate.setConfirmCallback(this::onPublisherConfirm);
+        rabbitTemplate.setReturnCallback(this::onPublisherReturned);
+    }
+
     @Override
     public Result secKillVoucher(Long voucherId) {
+        return secKillVoucher(voucherId, null);
+    }
+
+    @Override
+    public Result secKillVoucher(Long voucherId, String requestId) {
+        if (UserHolder.getUser() == null) {
+            return Result.fail("Unauthorized");
+        }
         Long userId = UserHolder.getUser().getId();
+        return executeWithRequestIdempotency(userId, voucherId, requestId, () -> secKillVoucherCore(voucherId, userId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result secKillVoucherSync(Long voucherId) {
+        return secKillVoucherSync(voucherId, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Result secKillVoucherSync(Long voucherId, String requestId) {
+        if (UserHolder.getUser() == null) {
+            return Result.fail("Unauthorized");
+        }
+        Long userId = UserHolder.getUser().getId();
+        return executeWithRequestIdempotency(userId, voucherId, requestId, () -> secKillVoucherSyncCore(voucherId, userId));
+    }
+
+    private Result secKillVoucherCore(Long voucherId, Long userId) {
         if (!passRateLimit(userId, voucherId)) {
             return Result.fail("Too many requests, please try again later");
         }
 
         long orderId = redisIdWoker.nexId("order");
-
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
                 voucherId.toString(), userId.toString()
         );
-
         if (result == null) {
             return Result.fail("Order failed, please retry");
         }
@@ -97,20 +160,138 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
 
-        // Producer-side compensation: if MQ send fails, retry from Redis pending set.
         cachePendingOrder(voucherOrder);
-        try {
-            rabbitTemplate.convertAndSend(
-                    RabbitMqConstants.SECKILL_ORDER_EXCHANGE,
-                    RabbitMqConstants.SECKILL_ORDER_ROUTING_KEY,
-                    voucherOrder
-            );
-            clearPendingOrder(orderId);
-        } catch (Exception e) {
-            log.error("Failed to publish seckill order to MQ, orderId={}", orderId, e);
+        publishOrderWithPendingRetry(voucherOrder, "initial_submit");
+        return Result.ok(orderId);
+    }
+
+    private Result secKillVoucherSyncCore(Long voucherId, Long userId) {
+        if (!passRateLimit(userId, voucherId)) {
+            return Result.fail("Too many requests, please try again later");
         }
 
+        long orderId = redisIdWoker.nexId("order");
+        Long result = stringRedisTemplate.execute(
+                SECKILL_SCRIPT,
+                Collections.emptyList(),
+                voucherId.toString(), userId.toString()
+        );
+        if (result == null) {
+            return Result.fail("Order failed, please retry");
+        }
+
+        int r = result.intValue();
+        if (r != 0) {
+            return Result.fail(r == 1 ? "Stock not enough" : "Duplicate order is not allowed");
+        }
+
+        VoucherOrder voucherOrder = new VoucherOrder();
+        voucherOrder.setId(orderId);
+        voucherOrder.setUserId(userId);
+        voucherOrder.setVoucherId(voucherId);
+
+        processVoucherOrder(voucherOrder);
         return Result.ok(orderId);
+    }
+
+    private Result executeWithRequestIdempotency(Long userId, Long voucherId, String requestId, Supplier<Result> supplier) {
+        if (StrUtil.isBlank(requestId)) {
+            return supplier.get();
+        }
+
+        String normalizedRequestId = StrUtil.trim(requestId);
+        String key = requestIdempotencyKey(userId, voucherId, normalizedRequestId);
+        Boolean locked = stringRedisTemplate.opsForValue().setIfAbsent(
+                key,
+                buildIdempotencyRecord(IDEM_STATUS_PROCESSING, null, null),
+                REQUEST_IDEMPOTENCY_TTL_SECONDS,
+                TimeUnit.SECONDS
+        );
+        if (Boolean.TRUE.equals(locked)) {
+            try {
+                Result result = supplier.get();
+                persistIdempotencyResult(key, result);
+                return result;
+            } catch (Exception e) {
+                persistIdempotencyFailure(key, "Request failed, please retry later");
+                throw e;
+            }
+        }
+
+        return replayIdempotencyResult(key);
+    }
+
+    private void persistIdempotencyResult(String key, Result result) {
+        if (result == null) {
+            persistIdempotencyFailure(key, "Request failed, please retry later");
+            return;
+        }
+
+        if (Boolean.TRUE.equals(result.getSuccess())) {
+            Long orderId = parseOrderId(result.getData() == null ? null : result.getData().toString());
+            String payload = buildIdempotencyRecord(IDEM_STATUS_SUCCESS, orderId, null);
+            stringRedisTemplate.opsForValue().set(key, payload, REQUEST_IDEMPOTENCY_TTL_SECONDS, TimeUnit.SECONDS);
+            return;
+        }
+
+        persistIdempotencyFailure(key, result.getErrorMsg());
+    }
+
+    private void persistIdempotencyFailure(String key, String errorMsg) {
+        String payload = buildIdempotencyRecord(
+                IDEM_STATUS_FAILED,
+                null,
+                StrUtil.isBlank(errorMsg) ? "Request failed" : errorMsg
+        );
+        stringRedisTemplate.opsForValue().set(key, payload, REQUEST_IDEMPOTENCY_TTL_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private Result replayIdempotencyResult(String key) {
+        String payload = null;
+        for (int i = 0; i < 3; i++) {
+            payload = stringRedisTemplate.opsForValue().get(key);
+            if (StrUtil.isBlank(payload)) {
+                return Result.fail(IDEM_PROCESSING_MSG);
+            }
+
+            JSONObject obj;
+            try {
+                obj = JSONUtil.parseObj(payload);
+            } catch (Exception e) {
+                return Result.fail(IDEM_PROCESSING_MSG);
+            }
+
+            String status = obj.getStr("status");
+            if (IDEM_STATUS_SUCCESS.equals(status)) {
+                Long orderId = obj.getLong("orderId");
+                return orderId == null ? Result.ok() : Result.ok(orderId);
+            }
+            if (IDEM_STATUS_FAILED.equals(status)) {
+                String errorMsg = obj.getStr("errorMsg");
+                return Result.fail(StrUtil.isBlank(errorMsg) ? "Request failed" : errorMsg);
+            }
+
+            try {
+                Thread.sleep(60L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Result.fail(IDEM_PROCESSING_MSG);
+            }
+        }
+        return Result.fail(IDEM_PROCESSING_MSG);
+    }
+
+    private String buildIdempotencyRecord(String status, Long orderId, String errorMsg) {
+        Map<String, Object> map = new HashMap<>(4);
+        map.put("status", status);
+        map.put("orderId", orderId);
+        map.put("errorMsg", errorMsg);
+        map.put("time", System.currentTimeMillis());
+        return JSONUtil.toJsonStr(map);
+    }
+
+    private String requestIdempotencyKey(Long userId, Long voucherId, String requestId) {
+        return REQUEST_IDEMPOTENCY_KEY_PREFIX + userId + ":" + voucherId + ":" + requestId;
     }
 
     @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_QUEUE)
@@ -119,7 +300,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         try {
             processVoucherOrder(voucherOrder);
         } catch (Exception e) {
-            // With default-requeue-rejected=false, throwing exception will route message to DLQ.
             log.error("Failed to consume seckill order, route to DLQ, order={}", voucherOrder, e);
             throw new RuntimeException(e);
         }
@@ -132,60 +312,50 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return;
         }
 
-        try {
-            stringRedisTemplate.opsForValue().set(
-                    deadOrderKey(voucherOrder.getId()),
-                    JSONUtil.toJsonStr(voucherOrder),
-                    DEAD_ORDER_TTL_SECONDS,
-                    TimeUnit.SECONDS
-            );
-            log.error("Order entered DLQ, waiting for manual handling, orderId={}, userId={}, voucherId={}",
-                    voucherOrder.getId(), voucherOrder.getUserId(), voucherOrder.getVoucherId());
-        } catch (Exception e) {
-            // Avoid throwing exception here, or DLQ consumer may loop.
-            log.error("Failed to record dead-letter order, order={}", voucherOrder, e);
-        }
-    }
-
-    @Scheduled(fixedDelay = 5000L)
-    public void retryPendingOrders() {
-        Set<String> keys = stringRedisTemplate.keys(PENDING_ORDER_KEY_PREFIX + "*");
-        if (keys == null || keys.isEmpty()) {
+        long dlqRetry = incrementDlqRetry(voucherOrder.getId());
+        if (dlqRetry <= MAX_DLQ_RETRY) {
+            publishOrderWithPendingRetry(voucherOrder, "dlq_retry_" + dlqRetry);
             return;
         }
 
-        for (String key : keys) {
-            String json = stringRedisTemplate.opsForValue().get(key);
-            if (StrUtil.isBlank(json)) {
-                stringRedisTemplate.delete(key);
+        markDeadOrder(voucherOrder, "DLQ retries exhausted: " + dlqRetry);
+        compensateReservation(voucherOrder, "DLQ retries exhausted");
+        clearDlqRetry(voucherOrder.getId());
+    }
+
+    @Scheduled(fixedDelay = 1000L)
+    public void retryPendingOrders() {
+        long now = System.currentTimeMillis();
+        Set<String> dueOrderIds = stringRedisTemplate.opsForZSet()
+                .rangeByScore(PENDING_ORDER_SCHEDULE_KEY, 0, now, 0, PENDING_RETRY_BATCH_SIZE);
+        if (dueOrderIds == null || dueOrderIds.isEmpty()) {
+            return;
+        }
+
+        for (String orderIdStr : dueOrderIds) {
+            Long orderId = parseOrderId(orderIdStr);
+            if (orderId == null) {
+                stringRedisTemplate.opsForZSet().remove(PENDING_ORDER_SCHEDULE_KEY, orderIdStr);
                 continue;
             }
 
-            VoucherOrder voucherOrder;
-            try {
-                voucherOrder = JSONUtil.toBean(json, VoucherOrder.class);
-            } catch (Exception e) {
-                log.error("Failed to parse pending order, key={}", key, e);
-                stringRedisTemplate.delete(key);
+            Long removed = stringRedisTemplate.opsForZSet().remove(PENDING_ORDER_SCHEDULE_KEY, orderIdStr);
+            if (removed == null || removed <= 0) {
                 continue;
             }
 
-            try {
-                rabbitTemplate.convertAndSend(
-                        RabbitMqConstants.SECKILL_ORDER_EXCHANGE,
-                        RabbitMqConstants.SECKILL_ORDER_ROUTING_KEY,
-                        voucherOrder
-                );
-                clearPendingOrder(voucherOrder.getId());
-            } catch (Exception e) {
-                log.error("Retry publish failed for pending order, orderId={}", voucherOrder.getId(), e);
+            VoucherOrder voucherOrder = getPendingOrder(orderId);
+            if (voucherOrder == null) {
+                clearPendingOrder(orderId);
+                continue;
             }
+
+            publishOrderWithPendingRetry(voucherOrder, "scheduled_retry");
         }
     }
 
     private void processVoucherOrder(VoucherOrder voucherOrder) {
         if (voucherOrder == null || voucherOrder.getId() == null || voucherOrder.getUserId() == null || voucherOrder.getVoucherId() == null) {
-            // Invalid payload is treated as business drop; no retry needed.
             log.warn("Incomplete seckill order payload, skip: {}", voucherOrder);
             return;
         }
@@ -193,7 +363,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         Long userId = voucherOrder.getUserId();
         Long voucherId = voucherOrder.getVoucherId();
 
-        // Business duplicate: ack directly, no retry.
         VoucherOrder existedOrder = query()
                 .select("id")
                 .eq("user_id", userId)
@@ -201,10 +370,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .last("LIMIT 1")
                 .one();
         if (existedOrder != null) {
+            clearDlqRetry(voucherOrder.getId());
             return;
         }
 
-        // DB-side optimistic stock check (second safety net).
         boolean update = seckillVoucherService.update()
                 .setSql("stock = stock - 1")
                 .eq("voucher_id", voucherId)
@@ -212,23 +381,27 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 .update();
 
         if (!update) {
-            // Business sold out: ack directly, no retry.
             log.warn("Stock update failed, voucherId={}, orderId={}", voucherId, voucherOrder.getId());
+            compensateReservation(voucherOrder, "DB stock update failed");
+            clearDlqRetry(voucherOrder.getId());
             return;
         }
 
-        boolean saved = save(voucherOrder);
-        if (!saved) {
-            throw new IllegalStateException("Failed to save order, orderId=" + voucherOrder.getId());
+        try {
+            boolean saved = save(voucherOrder);
+            if (!saved) {
+                throw new IllegalStateException("Failed to save order, orderId=" + voucherOrder.getId());
+            }
+        } catch (DuplicateKeyException e) {
+            log.warn("Duplicate DB insert detected, treat as idempotent success, orderId={}", voucherOrder.getId());
         }
+
+        clearDlqRetry(voucherOrder.getId());
     }
 
-    //限流的具体方法
     private boolean passRateLimit(Long userId, Long voucherId) {
-        //获取当前时间戳
         long now = System.currentTimeMillis();
 
-        //用户限流，看看是否通过限流
         boolean userAllowed = tryAcquireToken(
                 RATE_LIMIT_USER_KEY_PREFIX + userId,
                 USER_BUCKET_CAPACITY,
@@ -239,7 +412,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return false;
         }
 
-        //优惠券限流
         boolean voucherAllowed = tryAcquireToken(
                 RATE_LIMIT_VOUCHER_KEY_PREFIX + voucherId,
                 VOUCHER_BUCKET_CAPACITY,
@@ -250,7 +422,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return false;
         }
 
-        //全局桶限流
         return tryAcquireToken(
                 RATE_LIMIT_GLOBAL_KEY,
                 GLOBAL_BUCKET_CAPACITY,
@@ -259,9 +430,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         );
     }
 
-    //执行令牌桶脚本，参数：key，桶容量，令牌恢复时间，当前时间
     private boolean tryAcquireToken(String key, int capacity, double refillRate, long nowMillis) {
-//        执行lua脚本
         Long allowed = stringRedisTemplate.execute(
                 TOKEN_BUCKET_SCRIPT,
                 Collections.singletonList(key),
@@ -270,16 +439,31 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 String.valueOf(refillRate),
                 "1"
         );
-//        将返回值转成boolean
         return allowed != null && allowed == 1L;
     }
 
     private void cachePendingOrder(VoucherOrder voucherOrder) {
+        Long orderId = voucherOrder.getId();
+        if (orderId == null) {
+            return;
+        }
+
         stringRedisTemplate.opsForValue().set(
-                pendingOrderKey(voucherOrder.getId()),
+                pendingOrderKey(orderId),
                 JSONUtil.toJsonStr(voucherOrder),
                 PENDING_ORDER_TTL_SECONDS,
                 TimeUnit.SECONDS
+        );
+        stringRedisTemplate.opsForValue().set(
+                pendingRetryKey(orderId),
+                "0",
+                PENDING_ORDER_TTL_SECONDS,
+                TimeUnit.SECONDS
+        );
+        stringRedisTemplate.opsForZSet().add(
+                PENDING_ORDER_SCHEDULE_KEY,
+                orderId.toString(),
+                System.currentTimeMillis()
         );
     }
 
@@ -287,19 +471,255 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         if (orderId == null) {
             return;
         }
-        stringRedisTemplate.delete(pendingOrderKey(orderId));
+        List<String> keys = new ArrayList<>(3);
+        keys.add(pendingOrderKey(orderId));
+        keys.add(pendingRetryKey(orderId));
+        keys.add(pendingReturnedKey(orderId));
+        stringRedisTemplate.delete(keys);
+        stringRedisTemplate.opsForZSet().remove(PENDING_ORDER_SCHEDULE_KEY, orderId.toString());
+    }
+
+    private VoucherOrder getPendingOrder(Long orderId) {
+        String json = stringRedisTemplate.opsForValue().get(pendingOrderKey(orderId));
+        if (StrUtil.isBlank(json)) {
+            return null;
+        }
+        try {
+            return JSONUtil.toBean(json, VoucherOrder.class);
+        } catch (Exception e) {
+            log.error("Failed to parse pending order payload, orderId={}", orderId, e);
+            return null;
+        }
+    }
+
+    private void publishOrderWithPendingRetry(VoucherOrder voucherOrder, String source) {
+        if (voucherOrder == null || voucherOrder.getId() == null) {
+            return;
+        }
+
+        Long orderId = voucherOrder.getId();
+        long attempt = incrementPendingRetry(orderId);
+        if (attempt > MAX_PENDING_RETRY) {
+            handlePendingRetryExhausted(voucherOrder, "pending retry exhausted");
+            return;
+        }
+
+        clearPendingReturnedFlag(orderId);
+        try {
+            rabbitTemplate.convertAndSend(
+                    RabbitMqConstants.SECKILL_ORDER_EXCHANGE,
+                    RabbitMqConstants.SECKILL_ORDER_ROUTING_KEY,
+                    voucherOrder,
+                    message -> {
+                        message.getMessageProperties().setHeader("x-order-id", orderId);
+                        return message;
+                    },
+                    new CorrelationData(orderId.toString())
+            );
+            schedulePendingRetry(orderId, calcRetryDelayMs(attempt));
+            log.debug("Published seckill order, orderId={}, attempt={}, source={}", orderId, attempt, source);
+        } catch (Exception e) {
+            log.error("Publish failed, orderId={}, attempt={}, source={}", orderId, attempt, source, e);
+            if (attempt >= MAX_PENDING_RETRY) {
+                handlePendingRetryExhausted(voucherOrder, "publish exception: " + e.getClass().getSimpleName());
+                return;
+            }
+            schedulePendingRetry(orderId, calcRetryDelayMs(attempt));
+        }
+    }
+
+    private void onPublisherConfirm(CorrelationData correlationData, boolean ack, String cause) {
+        Long orderId = correlationData == null ? null : parseOrderId(correlationData.getId());
+        if (orderId == null) {
+            log.warn("Received publisher confirm without valid correlation id, ack={}, cause={}", ack, cause);
+            return;
+        }
+
+        if (ack) {
+            if (hasPendingReturnedFlag(orderId)) {
+                clearPendingReturnedFlag(orderId);
+                schedulePendingRetry(orderId, calcRetryDelayMs(currentPendingRetry(orderId)));
+                log.warn("Publisher acked but message was returned, reschedule retry, orderId={}", orderId);
+                return;
+            }
+            clearPendingOrder(orderId);
+            return;
+        }
+
+        log.error("Publisher confirm NACK, orderId={}, cause={}", orderId, cause);
+        schedulePendingRetry(orderId, calcRetryDelayMs(currentPendingRetry(orderId)));
+    }
+
+    private void onPublisherReturned(Message message, int replyCode, String replyText, String exchange, String routingKey) {
+        Long orderId = extractOrderId(message);
+        if (orderId == null) {
+            log.error("Publisher return without orderId, exchange={}, routingKey={}, replyCode={}",
+                    exchange, routingKey, replyCode);
+            return;
+        }
+
+        markPendingReturnedFlag(orderId);
+        log.error("Message returned by broker, orderId={}, exchange={}, routingKey={}, replyCode={}, replyText={}",
+                orderId,
+                exchange,
+                routingKey,
+                replyCode,
+                replyText);
+    }
+
+    private void schedulePendingRetry(Long orderId, long delayMs) {
+        if (orderId == null) {
+            return;
+        }
+        long next = System.currentTimeMillis() + Math.max(delayMs, PENDING_RETRY_BASE_DELAY_MS);
+        stringRedisTemplate.opsForZSet().add(PENDING_ORDER_SCHEDULE_KEY, orderId.toString(), next);
+    }
+
+    private long incrementPendingRetry(Long orderId) {
+        Long retry = stringRedisTemplate.opsForValue().increment(pendingRetryKey(orderId));
+        stringRedisTemplate.expire(pendingRetryKey(orderId), PENDING_ORDER_TTL_SECONDS, TimeUnit.SECONDS);
+        return retry == null ? 1L : retry;
+    }
+
+    private long currentPendingRetry(Long orderId) {
+        String val = stringRedisTemplate.opsForValue().get(pendingRetryKey(orderId));
+        if (StrUtil.isBlank(val)) {
+            return 1L;
+        }
+        Long parsed = parseOrderId(val);
+        return parsed == null ? 1L : parsed;
+    }
+
+    private long calcRetryDelayMs(long attempt) {
+        long safeAttempt = Math.max(1L, attempt);
+        long factorShift = Math.min(16L, safeAttempt - 1L);
+        long delay = PENDING_RETRY_BASE_DELAY_MS * (1L << factorShift);
+        return Math.min(delay, PENDING_RETRY_MAX_DELAY_MS);
+    }
+
+    private void handlePendingRetryExhausted(VoucherOrder voucherOrder, String reason) {
+        markDeadOrder(voucherOrder, reason);
+        compensateReservation(voucherOrder, reason);
+        clearPendingOrder(voucherOrder.getId());
+    }
+
+    private void markDeadOrder(VoucherOrder voucherOrder, String reason) {
+        if (voucherOrder == null || voucherOrder.getId() == null) {
+            return;
+        }
+        Map<String, Object> deadRecord = new HashMap<>(4);
+        deadRecord.put("order", voucherOrder);
+        deadRecord.put("reason", reason);
+        deadRecord.put("time", System.currentTimeMillis());
+        stringRedisTemplate.opsForValue().set(
+                deadOrderKey(voucherOrder.getId()),
+                JSONUtil.toJsonStr(deadRecord),
+                DEAD_ORDER_TTL_SECONDS,
+                TimeUnit.SECONDS
+        );
+        log.error("Order marked dead, orderId={}, reason={}", voucherOrder.getId(), reason);
+    }
+
+    private long incrementDlqRetry(Long orderId) {
+        Long retry = stringRedisTemplate.opsForValue().increment(dlqRetryKey(orderId));
+        stringRedisTemplate.expire(dlqRetryKey(orderId), DEAD_ORDER_TTL_SECONDS, TimeUnit.SECONDS);
+        return retry == null ? 1L : retry;
+    }
+
+    private void clearDlqRetry(Long orderId) {
+        if (orderId == null) {
+            return;
+        }
+        stringRedisTemplate.delete(dlqRetryKey(orderId));
+    }
+
+    private void compensateReservation(VoucherOrder voucherOrder, String reason) {
+        if (voucherOrder == null || voucherOrder.getUserId() == null || voucherOrder.getVoucherId() == null) {
+            return;
+        }
+
+        VoucherOrder existedOrder = query()
+                .select("id")
+                .eq("user_id", voucherOrder.getUserId())
+                .eq("voucher_id", voucherOrder.getVoucherId())
+                .last("LIMIT 1")
+                .one();
+        if (existedOrder != null) {
+            return;
+        }
+
+        Long compensated = stringRedisTemplate.execute(
+                COMPENSATE_SCRIPT,
+                Collections.emptyList(),
+                voucherOrder.getVoucherId().toString(),
+                voucherOrder.getUserId().toString()
+        );
+        log.warn("Compensated redis reservation, orderId={}, userId={}, voucherId={}, reason={}, compensated={}",
+                voucherOrder.getId(), voucherOrder.getUserId(), voucherOrder.getVoucherId(), reason, compensated);
+    }
+
+    private void markPendingReturnedFlag(Long orderId) {
+        stringRedisTemplate.opsForValue().set(
+                pendingReturnedKey(orderId),
+                "1",
+                PENDING_ORDER_TTL_SECONDS,
+                TimeUnit.SECONDS
+        );
+    }
+
+    private boolean hasPendingReturnedFlag(Long orderId) {
+        Boolean exists = stringRedisTemplate.hasKey(pendingReturnedKey(orderId));
+        return exists != null && exists;
+    }
+
+    private void clearPendingReturnedFlag(Long orderId) {
+        stringRedisTemplate.delete(pendingReturnedKey(orderId));
+    }
+
+    private Long extractOrderId(Message message) {
+        if (message == null || message.getMessageProperties() == null) {
+            return null;
+        }
+        Object raw = message.getMessageProperties().getHeaders().get("x-order-id");
+        if (raw instanceof Number) {
+            return ((Number) raw).longValue();
+        }
+        return raw == null ? null : parseOrderId(raw.toString());
+    }
+
+    private Long parseOrderId(String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String pendingOrderKey(Long orderId) {
         return PENDING_ORDER_KEY_PREFIX + orderId;
     }
 
+    private String pendingRetryKey(Long orderId) {
+        return PENDING_ORDER_RETRY_KEY_PREFIX + orderId;
+    }
+
+    private String pendingReturnedKey(Long orderId) {
+        return PENDING_ORDER_RETURNED_KEY_PREFIX + orderId;
+    }
+
     private String deadOrderKey(Long orderId) {
         return DEAD_ORDER_KEY_PREFIX + orderId;
     }
 
+    private String dlqRetryKey(Long orderId) {
+        return DLQ_RETRY_KEY_PREFIX + orderId;
+    }
+
     @Override
     public Result createVoucherOrder(Long voucherId) {
-        return Result.fail("This method is deprecated, please call seckill endpoint");
+        return secKillVoucherSync(voucherId);
     }
 }

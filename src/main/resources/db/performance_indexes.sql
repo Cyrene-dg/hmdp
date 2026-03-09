@@ -1,4 +1,4 @@
-﻿USE hmdp;
+USE hmdp;
 
 SET @idx_exists := (
     SELECT COUNT(1)
@@ -29,11 +29,24 @@ DEALLOCATE PREPARE stmt;
 SET @idx_exists := (
     SELECT COUNT(1)
     FROM information_schema.statistics
-    WHERE table_schema = DATABASE() AND table_name = 'tb_voucher_order' AND index_name = 'idx_voucher_order_user_voucher'
+    WHERE table_schema = DATABASE() AND table_name = 'tb_voucher_order' AND index_name = 'uk_voucher_order_user_voucher'
 );
 SET @ddl := IF(@idx_exists = 0,
-    'ALTER TABLE tb_voucher_order ADD INDEX idx_voucher_order_user_voucher (user_id, voucher_id)',
-    'SELECT ''idx_voucher_order_user_voucher already exists'''
+    'ALTER TABLE tb_voucher_order ADD UNIQUE INDEX uk_voucher_order_user_voucher (user_id, voucher_id)',
+    'SELECT ''uk_voucher_order_user_voucher already exists'''
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @idx_exists := (
+    SELECT COUNT(1)
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE() AND table_name = 'tb_voucher_order' AND index_name = 'idx_voucher_order_user_voucher'
+);
+SET @ddl := IF(@idx_exists = 1,
+    'ALTER TABLE tb_voucher_order DROP INDEX idx_voucher_order_user_voucher',
+    'SELECT ''idx_voucher_order_user_voucher already removed'''
 );
 PREPARE stmt FROM @ddl;
 EXECUTE stmt;
