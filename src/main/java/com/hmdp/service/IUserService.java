@@ -17,6 +17,8 @@ public interface IUserService extends IService<User> {
 
     Result refreshToken(String refreshToken);
 
+    Result logout(String authorizationHeader, String refreshTokenHeader);
+
     Result sign();
 
     Result signCount();

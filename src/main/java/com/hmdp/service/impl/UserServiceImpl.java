@@ -29,8 +29,10 @@ import javax.servlet.http.HttpSession;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -155,6 +157,30 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
                 refreshTokenValue,
                 RedisConstants.LOGIN_REFRESH_TTL
         ));
+    }
+
+    @Override
+    public Result logout(String authorizationHeader, String refreshTokenHeader) {
+        String token = AuthTokenUtil.extractToken(authorizationHeader);
+        String refreshToken = AuthTokenUtil.extractToken(refreshTokenHeader);
+
+        Set<String> keys = new LinkedHashSet<>();
+        if (StrUtil.isNotBlank(token)) {
+            keys.add(RedisConstants.LOGIN_USER_KEY + token);
+            keys.add(RedisConstants.LOGIN_ACCESS_KEY + token);
+            if (StrUtil.isBlank(refreshToken)) {
+                keys.add(RedisConstants.LOGIN_REFRESH_KEY + token);
+            }
+        }
+        if (StrUtil.isNotBlank(refreshToken)) {
+            keys.add(RedisConstants.LOGIN_REFRESH_KEY + refreshToken);
+        }
+
+        if (!keys.isEmpty()) {
+            stringRedisTemplate.delete(keys);
+        }
+        UserHolder.removeUser();
+        return Result.ok();
     }
 
     @Override

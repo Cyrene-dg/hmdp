@@ -51,8 +51,9 @@ public class UserController {
     }
 
     @PostMapping("/logout")
-    public Result logout(){
-        return Result.ok();
+    public Result logout(@RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+                         @RequestHeader(value = "X-Refresh-Token", required = false) String refreshToken) {
+        return userService.logout(authorizationHeader, refreshToken);
     }
 
     @GetMapping("/me")
