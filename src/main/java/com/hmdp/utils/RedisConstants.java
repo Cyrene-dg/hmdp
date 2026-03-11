@@ -1,10 +1,18 @@
 package com.hmdp.utils;
 
 public class RedisConstants {
+    public static final String AUTH_MODE_LEGACY = "legacy";
+    public static final String AUTH_MODE_HYBRID = "hybrid";
+    public static final String AUTH_MODE_V2 = "v2";
+
     public static final String LOGIN_CODE_KEY = "login:code:";
     public static final Long LOGIN_CODE_TTL = 2L;
     public static final String LOGIN_USER_KEY = "login:token:";
     public static final Long LOGIN_USER_TTL = 36000L;
+    public static final String LOGIN_ACCESS_KEY = "login:access:";
+    public static final Long LOGIN_ACCESS_TTL = 30L;
+    public static final String LOGIN_REFRESH_KEY = "login:refresh:";
+    public static final Long LOGIN_REFRESH_TTL = 10080L;
 
     public static final Long CACHE_NULL_TTL = 2L;
 

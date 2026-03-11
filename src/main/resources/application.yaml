@@ -41,3 +41,6 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+
+auth:
+  mode: hybrid

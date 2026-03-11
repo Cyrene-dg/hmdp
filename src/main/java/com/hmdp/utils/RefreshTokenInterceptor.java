@@ -1,6 +1,7 @@
 package com.hmdp.utils;
 
 import cn.hutool.core.bean.BeanUtil;
+import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.UserDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -13,38 +14,53 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class RefreshTokenInterceptor implements HandlerInterceptor {
-    private StringRedisTemplate stringRedisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final String authMode;
 
-    public RefreshTokenInterceptor(StringRedisTemplate stringRedisTemplate) {
+    public RefreshTokenInterceptor(StringRedisTemplate stringRedisTemplate, String authMode) {
         this.stringRedisTemplate = stringRedisTemplate;
+        this.authMode = authMode;
     }
 
     @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-//        log.info("刷新拦截器启动拦截");
-        //实现将当前用户放到threadlocal里
-        //获取当前token
-        String token = request.getHeader("Authorization");
-//        log.info("从Authorization头获取到的token：{}", token);
-        //从redis里获取当前用户
-        String key = RedisConstants.LOGIN_USER_KEY + token;
-//        log.info("生成的Redis查询key：{}", key); // 新增：打印Redis的key
-        Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
-//        log.info("从Redis查询到的userMap是否为空：{}", userMap.isEmpty()); // 新增：判断userMap是否有数据
-        //不存在用户
-        if (userMap.isEmpty()) {
-           return true;
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
+        String token = AuthTokenUtil.extractToken(request.getHeader("Authorization"));
+        if (StrUtil.isBlank(token)) {
+            return true;
         }
-        //将用户从hash转换成bean以后才能存threadlocal
-        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
-        //刷新时间
-        stringRedisTemplate.expire(key,RedisConstants.LOGIN_USER_TTL, TimeUnit.MINUTES);
-        UserHolder.saveUser(userDTO);
+
+        if (supportsV2() && tryLoadAndBindUser(RedisConstants.LOGIN_ACCESS_KEY + token, RedisConstants.LOGIN_ACCESS_TTL)) {
+            return true;
+        }
+
+        if (supportsLegacy() && tryLoadAndBindUser(RedisConstants.LOGIN_USER_KEY + token, RedisConstants.LOGIN_USER_TTL)) {
+            return true;
+        }
+
         return true;
     }
 
+    private boolean tryLoadAndBindUser(String key, Long ttlMinutes) {
+        Map<Object, Object> userMap = stringRedisTemplate.opsForHash().entries(key);
+        if (userMap == null || userMap.isEmpty()) {
+            return false;
+        }
+        UserDTO userDTO = BeanUtil.fillBeanWithMap(userMap, new UserDTO(), false);
+        UserHolder.saveUser(userDTO);
+        stringRedisTemplate.expire(key, ttlMinutes, TimeUnit.MINUTES);
+        return true;
+    }
+
+    private boolean supportsV2() {
+        return !RedisConstants.AUTH_MODE_LEGACY.equalsIgnoreCase(authMode);
+    }
+
+    private boolean supportsLegacy() {
+        return !RedisConstants.AUTH_MODE_V2.equalsIgnoreCase(authMode);
+    }
+
     @Override
-    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
         UserHolder.removeUser();
     }
 }
