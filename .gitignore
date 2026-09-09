@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local Codex/Git worktrees and generated review artifacts
+.worktrees/
+tmp/
+
+# Local-only environment and runtime output
+.env
+.env.*
+*.log
