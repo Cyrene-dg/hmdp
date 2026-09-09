@@ -88,6 +88,19 @@ class QingheSchemaMigrationContractTest {
                 "WP-05 migration must not mutate legacy tb_ tables");
     }
 
+    @Test
+    void posRedemptionMigrationMustPersistRecoverableIdempotencyState() throws IOException {
+        String sql = resource("db/qinghe/migration/V006__add_pos_redemption_support.sql");
+
+        assertTrue(sql.contains("CREATE TABLE qh_pos_redemption_request"));
+        assertTrue(sql.contains("UNIQUE KEY uq_qh_pos_request_client_no"));
+        assertTrue(sql.contains("request_digest CHAR(64)"));
+        assertTrue(sql.contains("original_redemption_no VARCHAR(40)"));
+        assertTrue(sql.contains("first_processed_at DATETIME(3)"));
+        assertFalse(sql.matches("(?is).*(ALTER|DROP|TRUNCATE)\\s+TABLE\\s+tb_.*"),
+                "WP-06 migration must not mutate legacy tb_ tables");
+    }
+
     private String resource(String name) throws IOException {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
             if (input == null) {
