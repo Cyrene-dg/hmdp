@@ -50,6 +50,19 @@ class QingheSchemaMigrationContractTest {
                 "WP-02 migration must not mutate legacy tb_ tables");
     }
 
+    @Test
+    void campaignMigrationMustPersistIndependentReviewAndImmutablePublicationSnapshot() throws IOException {
+        String sql = resource("db/qinghe/migration/V003__add_campaign_publication_and_reviews.sql");
+
+        assertTrue(sql.contains("CREATE TABLE qh_campaign_review"));
+        assertTrue(sql.contains("CREATE TABLE qh_campaign_publication_snapshot"));
+        assertTrue(sql.contains("UNIQUE KEY uq_qh_campaign_publication_campaign"));
+        assertTrue(sql.contains("member_claim_limit INT NOT NULL DEFAULT 1"));
+        assertTrue(sql.contains("review_comment VARCHAR(512)"));
+        assertFalse(sql.matches("(?is).*(ALTER|DROP|TRUNCATE)\\s+TABLE\\s+tb_.*"),
+                "WP-03 migration must not mutate legacy tb_ tables");
+    }
+
     private String resource(String name) throws IOException {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
             if (input == null) {
