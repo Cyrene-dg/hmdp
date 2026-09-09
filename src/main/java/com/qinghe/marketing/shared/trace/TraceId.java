@@ -11,8 +11,12 @@ public final class TraceId {
     private TraceId() {
     }
 
+    public static boolean isValid(String candidate) {
+        return candidate != null && SAFE.matcher(candidate).matches();
+    }
+
     public static String acceptOrCreate(String candidate) {
-        if (candidate != null && SAFE.matcher(candidate).matches()) {
+        if (isValid(candidate)) {
             return candidate;
         }
         return "QH-" + UUID.randomUUID().toString().replace("-", "").toUpperCase(Locale.ROOT);
