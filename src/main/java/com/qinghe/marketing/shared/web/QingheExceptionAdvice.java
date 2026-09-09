@@ -26,7 +26,7 @@ public class QingheExceptionAdvice {
     public ResponseEntity<QingheErrorResponse> handleBusiness(QingheBusinessException exception,
                                                                HttpServletRequest request) {
         QingheErrorCode error = exception.errorCode();
-        return ResponseEntity.status(error.httpStatus()).body(new QingheErrorResponse(
+        return ResponseEntity.status(exception.httpStatus()).body(new QingheErrorResponse(
                 publicCode(error), exception.getMessage(), QingheWebRequest.requestId(request),
                 exception.originalRedemptionNo()));
     }
