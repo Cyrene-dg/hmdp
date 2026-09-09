@@ -27,7 +27,8 @@ public class QingheExceptionAdvice {
                                                                HttpServletRequest request) {
         QingheErrorCode error = exception.errorCode();
         return ResponseEntity.status(error.httpStatus()).body(new QingheErrorResponse(
-                publicCode(error), exception.getMessage(), QingheWebRequest.requestId(request)));
+                publicCode(error), exception.getMessage(), QingheWebRequest.requestId(request),
+                exception.originalRedemptionNo()));
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class,

@@ -16,9 +16,22 @@ public final class QingheWebRequest {
         if (accepted instanceof String) {
             return (String) accepted;
         }
-        String requestId = TraceId.acceptOrCreate(request.getHeader("X-Request-Id"));
+        String candidate = request.getHeader("X-Request-Id");
+        if (!TraceId.isValid(candidate)) {
+            candidate = request.getHeader("X-POS-Request-Id");
+        }
+        String requestId = TraceId.acceptOrCreate(candidate);
         request.setAttribute("qinghe.requestId", requestId);
         return requestId;
+    }
+
+    public static String acceptPosRequestId(HttpServletRequest request, String candidate) {
+        if (!TraceId.isValid(candidate)) {
+            throw new QingheBusinessException(QingheErrorCode.INVALID_ARGUMENT,
+                    "POS request number must match [A-Za-z0-9._:-]{8,64}");
+        }
+        request.setAttribute("qinghe.requestId", candidate);
+        return candidate;
     }
 
     public static String requireRequestId(HttpServletRequest request) {

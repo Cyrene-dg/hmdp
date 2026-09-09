@@ -69,7 +69,7 @@ class PosRequestAuthenticatorTest {
         QingheBusinessException exception = assertThrows(QingheBusinessException.class,
                 () -> authenticator.authenticate(invalid));
 
-        assertEquals(QingheErrorCode.UNAUTHENTICATED, exception.errorCode());
+        assertEquals(QingheErrorCode.SIGNATURE_INVALID, exception.errorCode());
         assertEquals(0, nonces.values.size());
         authenticator.authenticate(signedRequest(NOW.getEpochSecond(), nonce, BODY, SECRET));
         assertEquals(1, nonces.values.size());
@@ -82,10 +82,10 @@ class PosRequestAuthenticatorTest {
         PosAuthenticationRequest first = signedRequest(NOW.getEpochSecond(), "nonce-replay-001", BODY, SECRET);
         authenticator.authenticate(first);
 
-        assertEquals(QingheErrorCode.UNAUTHENTICATED,
+        assertEquals(QingheErrorCode.SIGNATURE_INVALID,
                 assertThrows(QingheBusinessException.class,
                         () -> authenticator.authenticate(first)).errorCode());
-        assertEquals(QingheErrorCode.UNAUTHENTICATED,
+        assertEquals(QingheErrorCode.REQUEST_EXPIRED,
                 assertThrows(QingheBusinessException.class,
                         () -> authenticator.authenticate(signedRequest(
                                 NOW.minusSeconds(301).getEpochSecond(), "nonce-stale-0001", BODY, SECRET)))

@@ -46,6 +46,14 @@ auth:
   mode: hybrid
 
 qinghe:
+  pos:
+    allowed-clock-skew-seconds: ${QINGHE_POS_CLOCK_SKEW_SECONDS:300}
+    execution:
+      core-size: ${QINGHE_POS_CORE_SIZE:4}
+      max-size: ${QINGHE_POS_MAX_SIZE:8}
+      queue-capacity: ${QINGHE_POS_QUEUE_CAPACITY:64}
+      max-in-flight: ${QINGHE_POS_MAX_IN_FLIGHT:72}
+      timeout-ms: ${QINGHE_POS_TIMEOUT_MS:3000}
   outbox:
     publisher:
       enabled: ${QINGHE_OUTBOX_PUBLISHER_ENABLED:false}
@@ -55,6 +63,12 @@ qinghe:
       scan-delay-ms: ${QINGHE_OUTBOX_SCAN_DELAY_MS:1000}
       confirm-timeout-ms: ${QINGHE_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
   claim:
+    execution:
+      core-size: ${QINGHE_CLAIM_CORE_SIZE:8}
+      max-size: ${QINGHE_CLAIM_MAX_SIZE:16}
+      queue-capacity: ${QINGHE_CLAIM_QUEUE_CAPACITY:128}
+      max-in-flight: ${QINGHE_CLAIM_MAX_IN_FLIGHT:144}
+      timeout-ms: ${QINGHE_CLAIM_TIMEOUT_MS:3000}
     consumer:
       enabled: ${QINGHE_CLAIM_CONSUMER_ENABLED:false}
       max-attempts: ${QINGHE_CLAIM_CONSUMER_MAX_ATTEMPTS:4}

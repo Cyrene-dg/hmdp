@@ -25,10 +25,13 @@ public class MemberClaimController {
 
     private final ClaimService claimService;
     private final MemberAuthorizer authorizer;
+    private final ClaimExecutionGuard executionGuard;
 
-    public MemberClaimController(ClaimService claimService, MemberAuthorizer authorizer) {
+    public MemberClaimController(ClaimService claimService, MemberAuthorizer authorizer,
+                                 ClaimExecutionGuard executionGuard) {
         this.claimService = claimService;
         this.authorizer = authorizer;
+        this.executionGuard = executionGuard;
     }
 
     @PostMapping("/campaigns/{campaignNo}/claims")
@@ -42,14 +45,17 @@ public class MemberClaimController {
         if (body == null || body.getClientRequestedAt() == null) {
             throw invalid("clientRequestedAt is required");
         }
-        ClaimSubmissionResult result = claimService.submit(campaignNo, member.memberId(), requestId,
-                parseDateTime(body.getClientRequestedAt()));
-        QingheApiResponse<ClaimData> response = result.replay()
-                ? QingheApiResponse.ok("existing claim result", requestId,
-                new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true))
-                : QingheApiResponse.accepted("claim accepted", requestId,
-                new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true));
-        return ResponseEntity.status(result.replay() ? 200 : 202).body(response);
+        OffsetDateTime requestedAt = parseDateTime(body.getClientRequestedAt());
+        return executionGuard.execute(() -> {
+            ClaimSubmissionResult result = claimService.submit(campaignNo, member.memberId(), requestId,
+                    requestedAt);
+            QingheApiResponse<ClaimData> response = result.replay()
+                    ? QingheApiResponse.ok("existing claim result", requestId,
+                    new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true))
+                    : QingheApiResponse.accepted("claim accepted", requestId,
+                    new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true));
+            return ResponseEntity.status(result.replay() ? 200 : 202).body(response);
+        });
     }
 
     @GetMapping("/claims/{claimNo}")

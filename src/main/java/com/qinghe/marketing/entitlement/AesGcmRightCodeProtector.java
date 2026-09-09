@@ -41,12 +41,24 @@ public class AesGcmRightCodeProtector implements RightCodeProtector {
             byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
             byte[] packed = ByteBuffer.allocate(iv.length + ciphertext.length)
                     .put(iv).put(ciphertext).array();
-            return new ProtectedRightCode(hex(MessageDigest.getInstance("SHA-256")
-                    .digest(plaintext.getBytes(StandardCharsets.UTF_8))), packed);
+            return new ProtectedRightCode(hash(plaintext), packed);
         } catch (QingheBusinessException failure) {
             throw failure;
         } catch (Exception failure) {
             throw unavailable("right code protection failed", failure);
+        }
+    }
+
+    @Override
+    public String hash(String plaintext) {
+        if (plaintext == null || plaintext.trim().isEmpty()) {
+            throw new IllegalArgumentException("right code is required");
+        }
+        try {
+            return hex(MessageDigest.getInstance("SHA-256")
+                    .digest(plaintext.getBytes(StandardCharsets.UTF_8)));
+        } catch (Exception failure) {
+            throw unavailable("right code hash failed", failure);
         }
     }
 

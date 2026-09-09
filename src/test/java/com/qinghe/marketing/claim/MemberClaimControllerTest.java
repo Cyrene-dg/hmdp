@@ -98,7 +98,10 @@ class MemberClaimControllerTest {
     }
 
     private static MockMvc mvc(ClaimService claims, MemberAuthorizer authorizer) {
-        return MockMvcBuilders.standaloneSetup(new MemberClaimController(claims, authorizer))
+        ClaimExecutionGuard guard = new ClaimExecutionGuard(
+                new org.springframework.core.task.SimpleAsyncTaskExecutor("claim-controller-test-"),
+                new ClaimExecutionMetrics(), 8, 2000);
+        return MockMvcBuilders.standaloneSetup(new MemberClaimController(claims, authorizer, guard))
                 .setControllerAdvice(new QingheExceptionAdvice()).build();
     }
 

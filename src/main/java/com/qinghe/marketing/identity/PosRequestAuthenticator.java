@@ -69,16 +69,16 @@ public class PosRequestAuthenticator {
         try {
             requestTime = Instant.ofEpochSecond(timestamp);
         } catch (DateTimeException invalid) {
-            throw unauthenticated("POS timestamp is invalid");
+            throw expired("POS timestamp is invalid");
         }
         if (requestTime.isBefore(now.minus(allowedClockSkew))
                 || requestTime.isAfter(now.plus(allowedClockSkew))) {
-            throw unauthenticated("POS timestamp is outside the allowed window");
+            throw expired("POS timestamp is outside the allowed window");
         }
         PosCredential credential = credentialRepository.findActiveByClientId(request.clientId())
-                .orElseThrow(() -> unauthenticated("POS credential is invalid"));
+                .orElseThrow(() -> signatureInvalid("POS credential is invalid"));
         StoreRecord store = storeRepository.findById(credential.storeId())
-                .orElseThrow(() -> unauthenticated("POS credential store does not exist"));
+                .orElseThrow(() -> signatureInvalid("POS credential store does not exist"));
         if (store.status() != StoreStatus.ACTIVE) {
             throw new QingheBusinessException(QingheErrorCode.STORE_NOT_ELIGIBLE,
                     "store is disabled for POS operations");
@@ -89,7 +89,7 @@ public class PosRequestAuthenticator {
             String expected = signature(request, secret);
             if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.US_ASCII),
                     request.signature().getBytes(StandardCharsets.US_ASCII))) {
-                throw unauthenticated("POS signature is invalid");
+                throw signatureInvalid("POS signature is invalid");
             }
         } finally {
             Arrays.fill(secret, '\0');
@@ -98,7 +98,7 @@ public class PosRequestAuthenticator {
         LocalDateTime localNow = clock.dateTime();
         if (!nonceRepository.reserve(request.clientId(), request.nonce(),
                 localNow.plus(allowedClockSkew), localNow)) {
-            throw unauthenticated("POS nonce was already used");
+            throw signatureInvalid("POS nonce was already used");
         }
         return new PosAuthenticatedStore(store.id(), store.externalStoreCode(),
                 store.ownershipType(), credential.clientId());
@@ -110,7 +110,7 @@ public class PosRequestAuthenticator {
                 || !matches(CLIENT_ID, request.clientId())
                 || !matches(NONCE, request.nonce())
                 || !matches(SIGNATURE, request.signature())) {
-            throw unauthenticated("POS authentication headers are missing or invalid");
+            throw signatureInvalid("POS authentication headers are missing or invalid");
         }
     }
 
@@ -118,7 +118,7 @@ public class PosRequestAuthenticator {
         try {
             return Long.parseLong(value);
         } catch (RuntimeException invalid) {
-            throw unauthenticated("POS timestamp is invalid");
+            throw expired("POS timestamp is invalid");
         }
     }
 
@@ -169,7 +169,11 @@ public class PosRequestAuthenticator {
         return value != null && pattern.matcher(value).matches();
     }
 
-    private static QingheBusinessException unauthenticated(String message) {
-        return new QingheBusinessException(QingheErrorCode.UNAUTHENTICATED, message);
+    private static QingheBusinessException signatureInvalid(String message) {
+        return new QingheBusinessException(QingheErrorCode.SIGNATURE_INVALID, message);
+    }
+
+    private static QingheBusinessException expired(String message) {
+        return new QingheBusinessException(QingheErrorCode.REQUEST_EXPIRED, message);
     }
 }
