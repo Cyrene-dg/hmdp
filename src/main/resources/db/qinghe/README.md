@@ -15,3 +15,7 @@ a rollback script.
 then proves the development rollback before dropping that temporary database. V002 adds the
 WP-02 platform session, versioned store import, POS credential-reference and nonce replay-guard
 tables; R002 drops only those additions in dependency-safe order.
+
+V003 adds the WP-03 campaign approval fact, immutable publication snapshot and the fields
+needed to audit campaign and inventory state transitions. R003 removes only those WP-03
+additions from a disposable database, before any campaign facts exist.
