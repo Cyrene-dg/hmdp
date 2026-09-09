@@ -8,6 +8,7 @@ import com.hmdp.dto.Result;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.IVoucherOrderService;
+import com.hmdp.service.VoucherOrderTransactionService;
 import com.hmdp.utils.RabbitMqConstants;
 import com.hmdp.utils.RedisIdWoker;
 import com.hmdp.utils.UserHolder;
@@ -22,7 +23,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
@@ -91,7 +91,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @Resource
-    private SeckillVoucherServiceImpl seckillVoucherService;
+    private VoucherOrderTransactionService voucherOrderTransactionService;
     @Resource
     private RedisIdWoker redisIdWoker;
     @Resource
@@ -120,13 +120,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Result secKillVoucherSync(Long voucherId) {
         return secKillVoucherSync(voucherId, null);
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Result secKillVoucherSync(Long voucherId, String requestId) {
         if (UserHolder.getUser() == null) {
             return Result.fail("Unauthorized");
@@ -190,7 +188,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         voucherOrder.setUserId(userId);
         voucherOrder.setVoucherId(voucherId);
 
-        processVoucherOrder(voucherOrder);
+        try {
+            VoucherOrderTransactionService.PersistResult persistResult = voucherOrderTransactionService.persist(voucherOrder);
+            if (persistResult == VoucherOrderTransactionService.PersistResult.STOCK_UNAVAILABLE) {
+                compensateReservation(voucherOrder, "Synchronous DB stock update failed");
+                return Result.fail("Stock not enough");
+            }
+        } catch (DuplicateKeyException e) {
+            if (!voucherOrderTransactionService.orderExists(userId, voucherId)) {
+                throw e;
+            }
+            log.warn("Synchronous duplicate order message confirmed after rollback, orderId={}", orderId);
+        }
         return Result.ok(orderId);
     }
 
@@ -295,10 +304,25 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
 
     @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_QUEUE)
-    @Transactional(rollbackFor = Exception.class)
     public void consumeVoucherOrder(VoucherOrder voucherOrder) {
         try {
-            processVoucherOrder(voucherOrder);
+            VoucherOrderTransactionService.PersistResult result = voucherOrderTransactionService.persist(voucherOrder);
+            if (result == VoucherOrderTransactionService.PersistResult.STOCK_UNAVAILABLE) {
+                log.warn("DB stock update failed, voucherId={}, orderId={}", voucherOrder.getVoucherId(), voucherOrder.getId());
+                compensateReservation(voucherOrder, "DB stock update failed");
+            }
+            clearDlqRetry(voucherOrder.getId());
+        } catch (DuplicateKeyException e) {
+            // 异常已使独立事务中的库存扣减回滚；事务外确认已有订单后，
+            // 将该消息视作重复投递，不再送入死信队列。
+            if (voucherOrder != null && voucherOrderTransactionService.orderExists(
+                    voucherOrder.getUserId(), voucherOrder.getVoucherId())) {
+                log.warn("Duplicate order message confirmed after rollback, orderId={}", voucherOrder.getId());
+                clearDlqRetry(voucherOrder.getId());
+                return;
+            }
+            log.error("Duplicate key without persisted order, route to DLQ, order={}", voucherOrder, e);
+            throw new RuntimeException(e);
         } catch (Exception e) {
             log.error("Failed to consume seckill order, route to DLQ, order={}", voucherOrder, e);
             throw new RuntimeException(e);
@@ -352,51 +376,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
             publishOrderWithPendingRetry(voucherOrder, "scheduled_retry");
         }
-    }
-
-    private void processVoucherOrder(VoucherOrder voucherOrder) {
-        if (voucherOrder == null || voucherOrder.getId() == null || voucherOrder.getUserId() == null || voucherOrder.getVoucherId() == null) {
-            log.warn("Incomplete seckill order payload, skip: {}", voucherOrder);
-            return;
-        }
-
-        Long userId = voucherOrder.getUserId();
-        Long voucherId = voucherOrder.getVoucherId();
-
-        VoucherOrder existedOrder = query()
-                .select("id")
-                .eq("user_id", userId)
-                .eq("voucher_id", voucherId)
-                .last("LIMIT 1")
-                .one();
-        if (existedOrder != null) {
-            clearDlqRetry(voucherOrder.getId());
-            return;
-        }
-
-        boolean update = seckillVoucherService.update()
-                .setSql("stock = stock - 1")
-                .eq("voucher_id", voucherId)
-                .gt("stock", 0)
-                .update();
-
-        if (!update) {
-            log.warn("Stock update failed, voucherId={}, orderId={}", voucherId, voucherOrder.getId());
-            compensateReservation(voucherOrder, "DB stock update failed");
-            clearDlqRetry(voucherOrder.getId());
-            return;
-        }
-
-        try {
-            boolean saved = save(voucherOrder);
-            if (!saved) {
-                throw new IllegalStateException("Failed to save order, orderId=" + voucherOrder.getId());
-            }
-        } catch (DuplicateKeyException e) {
-            log.warn("Duplicate DB insert detected, treat as idempotent success, orderId={}", voucherOrder.getId());
-        }
-
-        clearDlqRetry(voucherOrder.getId());
     }
 
     private boolean passRateLimit(Long userId, Long voucherId) {
