@@ -46,9 +46,9 @@ public class MemberClaimController {
                 parseDateTime(body.getClientRequestedAt()));
         QingheApiResponse<ClaimData> response = result.replay()
                 ? QingheApiResponse.ok("existing claim result", requestId,
-                new ClaimData(result.claimRequest(), true))
+                new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true))
                 : QingheApiResponse.accepted("claim accepted", requestId,
-                new ClaimData(result.claimRequest(), true));
+                new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true));
         return ResponseEntity.status(result.replay() ? 200 : 202).body(response);
     }
 
@@ -58,8 +58,9 @@ public class MemberClaimController {
             @RequestHeader(value = "Authorization", required = false) String authorization,
             HttpServletRequest request) {
         AuthenticatedMember member = authorizer.require(authorization);
+        ClaimRequest claim = claimService.requireOwnedClaim(claimNo, member.memberId());
         return QingheApiResponse.ok("success", QingheWebRequest.requireRequestId(request),
-                new ClaimData(claimService.requireOwnedClaim(claimNo, member.memberId()), false));
+                new ClaimData(claim, claimService.entitlementNoFor(claim), false));
     }
 
     private static OffsetDateTime parseDateTime(String value) {
@@ -83,13 +84,15 @@ public class MemberClaimController {
     public static final class ClaimData {
         private final String claimNo;
         private final String status;
+        private final String entitlementNo;
         private final Integer nextPollAfterMillis;
         private final String failureCode;
         private final LocalDateTime updatedAt;
 
-        private ClaimData(ClaimRequest claim, boolean includePollingHint) {
+        private ClaimData(ClaimRequest claim, String entitlementNo, boolean includePollingHint) {
             this.claimNo = claim.claimNo();
             this.status = claim.status().name();
+            this.entitlementNo = entitlementNo;
             this.nextPollAfterMillis = includePollingHint
                     && (claim.status() == ClaimStatus.PROCESSING
                     || claim.status() == ClaimStatus.COMPENSATING) ? 500 : null;
@@ -99,6 +102,7 @@ public class MemberClaimController {
 
         public String getClaimNo() { return claimNo; }
         public String getStatus() { return status; }
+        public String getEntitlementNo() { return entitlementNo; }
         public Integer getNextPollAfterMillis() { return nextPollAfterMillis; }
         public String getFailureCode() { return failureCode; }
         public LocalDateTime getUpdatedAt() { return updatedAt; }

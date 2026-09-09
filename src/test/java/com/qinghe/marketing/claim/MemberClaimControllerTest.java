@@ -75,6 +75,28 @@ class MemberClaimControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_ARGUMENT"));
     }
 
+    @Test
+    void shouldReturnEntitlementNumberOnlyAfterClaimIsSuccessful() throws Exception {
+        ClaimService claims = mock(ClaimService.class);
+        MemberAuthorizer authorizer = mock(MemberAuthorizer.class);
+        when(authorizer.require("Bearer platform-token"))
+                .thenReturn(new AuthenticatedMember(20L, 200L, "MEM-20"));
+        LocalDateTime now = LocalDateTime.of(2026, 9, 9, 16, 0);
+        ClaimRequest successful = new ClaimRequest(30L, "CLM-1", "request-001", repeat('a', 64),
+                10L, 20L, "CAMPAIGN:10", "reservation-1", ClaimStatus.SUCCESS,
+                null, 1L, now, now.plusSeconds(1));
+        when(claims.requireOwnedClaim("CLM-1", 20L)).thenReturn(successful);
+        when(claims.entitlementNoFor(successful)).thenReturn("ENT-1");
+        MockMvc mvc = mvc(claims, authorizer);
+
+        mvc.perform(get("/api/v1/member/claims/CLM-1")
+                        .header("Authorization", "Bearer platform-token")
+                        .header("X-Request-Id", "query-success-001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.data.entitlementNo").value("ENT-1"));
+    }
+
     private static MockMvc mvc(ClaimService claims, MemberAuthorizer authorizer) {
         return MockMvcBuilders.standaloneSetup(new MemberClaimController(claims, authorizer))
                 .setControllerAdvice(new QingheExceptionAdvice()).build();

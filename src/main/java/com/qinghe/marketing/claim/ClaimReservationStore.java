@@ -9,6 +9,8 @@ public interface ClaimReservationStore {
 
     void markPersisted(long campaignId, String reservationId);
 
+    void markIssued(long campaignId, String reservationId, String entitlementNo);
+
     void compensate(long campaignId, long memberId, String requestId,
                     String reservationId, String reason);
 

@@ -27,10 +27,16 @@ public class RedisClaimReservationStore implements ClaimReservationStore {
             "if redis.call('hget', KEYS[1], 'state') == 'RESERVED' then "
                     + "redis.call('hset', KEYS[1], 'state', 'PERSISTED'); "
                     + "redis.call('zrem', KEYS[2], ARGV[1]); return 1; end; return 0;", Long.class);
+    private static final DefaultRedisScript<Long> MARK_ISSUED = new DefaultRedisScript<Long>(
+            "local state = redis.call('hget', KEYS[1], 'state'); "
+                    + "if state == 'ISSUED' then return 0; end; "
+                    + "if state ~= 'PERSISTED' then return -1; end; "
+                    + "redis.call('hset', KEYS[1], 'state', 'ISSUED', 'entitlementNo', ARGV[1]); return 1;",
+            Long.class);
     private static final DefaultRedisScript<Long> COMPENSATE = new DefaultRedisScript<Long>(
             "local state = redis.call('hget', KEYS[4], 'state'); "
                     + "if state == 'COMPENSATED' then return 0; end; "
-                    + "if state ~= 'RESERVED' then return -1; end; "
+                    + "if state ~= 'RESERVED' and state ~= 'PERSISTED' then return -1; end; "
                     + "redis.call('incr', KEYS[1]); "
                     + "if redis.call('get', KEYS[2]) == ARGV[1] then redis.call('del', KEYS[2]); end; "
                     + "redis.call('hset', KEYS[3], 'state', 'COMPENSATED'); "
@@ -71,6 +77,15 @@ public class RedisClaimReservationStore implements ClaimReservationStore {
         redisTemplate.execute(MARK_PERSISTED,
                 Arrays.asList(reservationKey(campaignId, reservationId), pendingKey(campaignId)),
                 reservationId);
+    }
+
+    @Override
+    public void markIssued(long campaignId, String reservationId, String entitlementNo) {
+        Long result = redisTemplate.execute(MARK_ISSUED,
+                Collections.singletonList(reservationKey(campaignId, reservationId)), entitlementNo);
+        if (result == null || result < 0) {
+            throw unavailable("claim reservation cannot be marked issued from its current state");
+        }
     }
 
     @Override

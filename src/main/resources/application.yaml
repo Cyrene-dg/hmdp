@@ -55,7 +55,22 @@ qinghe:
       scan-delay-ms: ${QINGHE_OUTBOX_SCAN_DELAY_MS:1000}
       confirm-timeout-ms: ${QINGHE_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
   claim:
+    consumer:
+      enabled: ${QINGHE_CLAIM_CONSUMER_ENABLED:false}
+      max-attempts: ${QINGHE_CLAIM_CONSUMER_MAX_ATTEMPTS:4}
+      retry-initial-ms: ${QINGHE_CLAIM_CONSUMER_RETRY_INITIAL_MS:200}
+      retry-max-ms: ${QINGHE_CLAIM_CONSUMER_RETRY_MAX_MS:2000}
+    failure-recovery:
+      enabled: ${QINGHE_CLAIM_FAILURE_RECOVERY_ENABLED:false}
+      batch-size: ${QINGHE_CLAIM_FAILURE_BATCH_SIZE:50}
+      compensating-seconds: ${QINGHE_CLAIM_COMPENSATING_SECONDS:30}
+      scan-delay-ms: ${QINGHE_CLAIM_FAILURE_SCAN_DELAY_MS:5000}
     recovery:
       enabled: ${QINGHE_CLAIM_RECOVERY_ENABLED:false}
       orphan-seconds: ${QINGHE_CLAIM_ORPHAN_SECONDS:120}
       scan-delay-ms: ${QINGHE_CLAIM_RECOVERY_SCAN_DELAY_MS:30000}
+  entitlement:
+    right-code-key-base64: ${QINGHE_RIGHT_CODE_KEY_BASE64:}
+    expiry:
+      enabled: ${QINGHE_ENTITLEMENT_EXPIRY_ENABLED:false}
+      scan-delay-ms: ${QINGHE_ENTITLEMENT_EXPIRY_SCAN_DELAY_MS:60000}

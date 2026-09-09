@@ -23,3 +23,7 @@ additions from a disposable database, before any campaign facts exist.
 V004 adds the WP-04 Outbox lease owner, terminal publication fields and an append-only
 delivery-attempt table. R004 is development-only and may be used only before claim and
 Outbox facts exist; environments containing business facts must use a forward correction.
+
+V005 adds the WP-05 claim-issue delivery fact that links each processed event to its claim
+and source Outbox event. R005 is development-only; issued entitlements and failed claims are
+business facts and must be preserved by forward correction outside disposable databases.

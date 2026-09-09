@@ -2,6 +2,7 @@ package com.qinghe.marketing.claim;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Collections;
 
 public interface OutboxEventRepository {
 
@@ -13,4 +14,8 @@ public interface OutboxEventRepository {
     OutboxStatus completePublication(String eventId, String leaseOwner, boolean acknowledged,
                                      String errorMessage, LocalDateTime nextRetryAt,
                                      int maxRetries, LocalDateTime now);
+
+    default List<DeadOutboxEvent> findUnhandledDead(int limit) {
+        return Collections.emptyList();
+    }
 }
