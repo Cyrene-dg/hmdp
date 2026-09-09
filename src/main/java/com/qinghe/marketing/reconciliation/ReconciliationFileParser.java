@@ -37,6 +37,9 @@ public class ReconciliationFileParser {
                                           byte[] csvBytes) {
         ReconciliationManifest manifest = manifest(manifestBytes);
         require(manifest.fileName().equals(actualFileName), "manifest fileName does not match");
+        String expectedFileName = "POS_" + manifest.businessDate().toString().replace("-", "")
+                + "_" + manifest.batchNo() + ".csv";
+        require(expectedFileName.equals(actualFileName), "CSV fileName is invalid");
         require(manifest.checksum().equals(sha256(csvBytes)), "CSV checksum does not match");
         String text = utf8(csvBytes);
         require(!text.startsWith("\uFEFF"), "CSV must not contain BOM");

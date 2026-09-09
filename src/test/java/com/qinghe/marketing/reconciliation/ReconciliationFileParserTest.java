@@ -47,6 +47,20 @@ class ReconciliationFileParserTest {
         assertEquals(QingheErrorCode.RECON_FILE_INVALID, failure.errorCode());
     }
 
+    @Test
+    void shouldRejectFileNameThatDoesNotFollowFrozenConvention() throws Exception {
+        byte[] manifest = bytes("contracts/reconciliation/valid/"
+                + "POS_20260908_POSB20260908001.manifest.json");
+        byte[] csv = bytes("contracts/reconciliation/valid/"
+                + "POS_20260908_POSB20260908001.csv");
+        String changedManifest = new String(manifest, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("POS_20260908_POSB20260908001.csv", "renamed.csv");
+        QingheBusinessException failure = assertThrows(QingheBusinessException.class,
+                () -> parser.parse(changedManifest.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        "renamed.csv", csv));
+        assertEquals(QingheErrorCode.RECON_FILE_INVALID, failure.errorCode());
+    }
+
     private ParsedReconciliationFile parse(String folder, String date, String batch) throws Exception {
         String base = "contracts/reconciliation/" + folder + "/POS_" + date + "_" + batch;
         return parser.parse(bytes(base + ".manifest.json"), "POS_" + date + "_" + batch + ".csv",
