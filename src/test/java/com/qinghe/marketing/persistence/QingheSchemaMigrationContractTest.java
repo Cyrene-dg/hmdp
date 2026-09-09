@@ -63,6 +63,19 @@ class QingheSchemaMigrationContractTest {
                 "WP-03 migration must not mutate legacy tb_ tables");
     }
 
+    @Test
+    void claimOutboxMigrationMustPersistLeaseOwnershipAndDeliveryAttempts() throws IOException {
+        String sql = resource("db/qinghe/migration/V004__add_claim_outbox_delivery_support.sql");
+
+        assertTrue(sql.contains("lease_owner VARCHAR(64)"));
+        assertTrue(sql.contains("last_error VARCHAR(512)"));
+        assertTrue(sql.contains("published_at DATETIME(3)"));
+        assertTrue(sql.contains("CREATE TABLE qh_outbox_delivery_attempt"));
+        assertTrue(sql.contains("UNIQUE KEY uq_qh_outbox_attempt_event_no"));
+        assertFalse(sql.matches("(?is).*(ALTER|DROP|TRUNCATE)\\s+TABLE\\s+tb_.*"),
+                "WP-04 migration must not mutate legacy tb_ tables");
+    }
+
     private String resource(String name) throws IOException {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
             if (input == null) {
