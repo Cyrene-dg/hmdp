@@ -1,6 +1,8 @@
 package com.qinghe.marketing.shared.id;
 
 public enum BusinessIdType {
+    MEMBER_SESSION("SES"),
+    STORE_IMPORT("IMP"),
     CAMPAIGN("CAM"),
     INVENTORY_ADJUSTMENT("IAD"),
     CLAIM("CLM"),

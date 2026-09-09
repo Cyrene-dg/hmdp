@@ -12,4 +12,6 @@ redemptions, reconciliation imports and confirmed settlement amounts must never 
 a rollback script.
 
 `QingheSchemaMigrationIT` proves V001 against a uniquely named temporary MySQL database and
-then proves the development rollback before dropping that temporary database.
+then proves the development rollback before dropping that temporary database. V002 adds the
+WP-02 platform session, versioned store import, POS credential-reference and nonce replay-guard
+tables; R002 drops only those additions in dependency-safe order.
