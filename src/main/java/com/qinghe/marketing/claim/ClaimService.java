@@ -111,6 +111,14 @@ public class ClaimService {
                         "claim request does not exist"));
     }
 
+    public String entitlementNoFor(ClaimRequest claim) {
+        if (claim.status() != ClaimStatus.SUCCESS) {
+            return null;
+        }
+        return claimRepository.findEntitlementNo(claim.id()).orElseThrow(
+                () -> new IllegalStateException("successful claim has no entitlement"));
+    }
+
     private void handleRejectedReservation(ClaimReservationResult result) {
         switch (result.outcome()) {
             case RESERVED:

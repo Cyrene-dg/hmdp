@@ -107,6 +107,21 @@ public class JdbcOutboxEventRepository implements OutboxEventRepository {
         return nextStatus;
     }
 
+    @Override
+    public List<DeadOutboxEvent> findUnhandledDead(int limit) {
+        if (limit <= 0) {
+            return Collections.emptyList();
+        }
+        return jdbcTemplate.query("SELECT o.event_id, o.aggregate_id, o.last_error "
+                        + "FROM qh_outbox_event o LEFT JOIN qh_claim_issue_delivery d "
+                        + "ON d.event_id = o.event_id WHERE o.status = 'DEAD' "
+                        + "AND o.aggregate_type = 'CLAIM_REQUEST' AND d.id IS NULL "
+                        + "ORDER BY o.id LIMIT ?",
+                new Object[]{limit}, (resultSet, rowNum) -> new DeadOutboxEvent(
+                        resultSet.getString("event_id"), resultSet.getString("aggregate_id"),
+                        resultSet.getString("last_error")));
+    }
+
     private static String truncate(String value) {
         if (value == null) {
             return null;
