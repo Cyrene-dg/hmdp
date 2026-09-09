@@ -101,6 +101,16 @@ class QingheSchemaMigrationContractTest {
                 "WP-06 migration must not mutate legacy tb_ tables");
     }
 
+    @Test
+    void reversalMigrationMustKeepRejectedRequestsAuditable() throws IOException {
+        String sql = resource("db/qinghe/migration/V007__add_reversal_idempotency_and_audit.sql");
+        assertTrue(sql.contains("CREATE TABLE qh_pos_reversal_request"));
+        assertTrue(sql.contains("UNIQUE KEY uq_qh_reversal_request_client_no"));
+        assertTrue(sql.contains("target_redemption_no VARCHAR(40)"));
+        assertTrue(sql.contains("failure_code VARCHAR(64)"));
+        assertFalse(sql.matches("(?is).*(ALTER|DROP|TRUNCATE)\\s+TABLE\\s+tb_.*"));
+    }
+
     private String resource(String name) throws IOException {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
             if (input == null) {
