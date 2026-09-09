@@ -1,12 +1,13 @@
 package com.qinghe.marketing.architecture;
 
 import com.qinghe.marketing.shared.clock.BusinessClock;
+import com.qinghe.marketing.shared.clock.SystemBusinessClock;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
 import com.qinghe.marketing.shared.trace.TraceIdFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
 import java.util.Arrays;
 
@@ -33,7 +34,7 @@ class QingheIsolatedContextTest {
     }
 
     @Configuration
-    @ComponentScan(basePackages = "com.qinghe.marketing")
+    @Import({SystemBusinessClock.class, BusinessIdGenerator.class, TraceIdFilter.class})
     static class QingheOnlyConfiguration {
     }
 }

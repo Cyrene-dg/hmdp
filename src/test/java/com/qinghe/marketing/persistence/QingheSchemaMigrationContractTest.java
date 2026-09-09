@@ -35,6 +35,21 @@ class QingheSchemaMigrationContractTest {
         assertTrue(sql.contains("trace_id VARCHAR(64)"));
     }
 
+    @Test
+    void identityAndStoreMigrationMustKeepCredentialsByReferenceAndPersistReplayGuard() throws IOException {
+        String sql = resource("db/qinghe/migration/V002__create_identity_and_store_support.sql");
+
+        assertTrue(sql.contains("CREATE TABLE qh_platform_session"));
+        assertTrue(sql.contains("CREATE TABLE qh_store_import_batch"));
+        assertTrue(sql.contains("CREATE TABLE qh_store_import_row"));
+        assertTrue(sql.contains("CREATE TABLE qh_pos_credential"));
+        assertTrue(sql.contains("CREATE TABLE qh_pos_nonce"));
+        assertTrue(sql.contains("secret_reference VARCHAR(255)"));
+        assertTrue(sql.contains("UNIQUE KEY uq_qh_pos_nonce_client_value"));
+        assertFalse(sql.matches("(?is).*(ALTER|DROP|TRUNCATE)\\s+TABLE\\s+tb_.*"),
+                "WP-02 migration must not mutate legacy tb_ tables");
+    }
+
     private String resource(String name) throws IOException {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(name)) {
             if (input == null) {
