@@ -1,0 +1,19 @@
+-- Development/test rollback for V001. Never use after real Qinghe business data exists.
+DROP TABLE qh_operation_log;
+DROP TABLE qh_outbox_event;
+DROP TABLE qh_settlement_detail;
+DROP TABLE qh_settlement_batch;
+DROP TABLE qh_recon_record;
+DROP TABLE qh_recon_batch;
+DROP TABLE qh_subsidy_candidate;
+DROP TABLE qh_redemption_reversal;
+DROP TABLE qh_redemption;
+DROP TABLE qh_member_entitlement;
+DROP TABLE qh_claim_request;
+DROP TABLE qh_campaign_store;
+DROP TABLE qh_inventory_adjustment;
+DROP TABLE qh_campaign_inventory;
+DROP TABLE qh_campaign;
+DROP TABLE qh_benefit_template;
+DROP TABLE qh_member_mapping;
+DROP TABLE qh_store;
