@@ -1,0 +1,1471 @@
+openapi: 3.0.3
+info:
+  title: Qinghe Tea Membership Marketing Platform API
+  version: 1.0.0
+  description: |
+    Machine-readable contract for Qinghe member and administration APIs.
+    Qinghe Tea and all organization, store and system details are simulated.
+    This contract is for local Mock and contract testing, not evidence of vendor integration.
+servers:
+  - url: http://localhost:8081
+    description: Local development placeholder
+tags:
+  - name: MemberSession
+  - name: MemberCampaign
+  - name: MemberClaim
+  - name: MemberEntitlement
+  - name: AdminTemplate
+  - name: AdminStore
+  - name: AdminCampaign
+  - name: AdminInventory
+  - name: AdminOperations
+  - name: AdminReconciliation
+  - name: AdminSettlement
+paths:
+  /api/v1/member/sessions/exchange:
+    post:
+      tags: [MemberSession]
+      operationId: exchangeMemberSession
+      summary: Exchange a member-center token for a short-lived platform token
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionExchangeRequest'
+      responses:
+        '200':
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionExchangeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /api/v1/member/campaigns:
+    get:
+      tags: [MemberCampaign]
+      operationId: listMemberCampaigns
+      summary: List member-visible active campaigns
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE]
+      responses:
+        '200':
+          description: Campaign page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/member/campaigns/{campaignNo}:
+    get:
+      tags: [MemberCampaign]
+      operationId: getMemberCampaign
+      summary: Get campaign details and current member eligibility
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      responses:
+        '200':
+          description: Campaign details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CampaignDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/member/campaigns/{campaignNo}/claims:
+    post:
+      tags: [MemberClaim]
+      operationId: submitClaim
+      summary: Submit an idempotent claim intent
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimRequest'
+      responses:
+        '200':
+          description: Existing idempotent claim result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimResponse'
+        '202':
+          description: Claim accepted and processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/member/claims/{claimNo}:
+    get:
+      tags: [MemberClaim]
+      operationId: getClaimResult
+      summary: Query a claim result owned by the current member
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ClaimNo'
+      responses:
+        '200':
+          description: Claim result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimResultResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/member/entitlements:
+    get:
+      tags: [MemberEntitlement]
+      operationId: listMemberEntitlements
+      summary: List entitlements owned by the current member
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/EntitlementStatus'
+      responses:
+        '200':
+          description: Entitlement page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitlementPageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/member/entitlements/{entitlementNo}:
+    get:
+      tags: [MemberEntitlement]
+      operationId: getMemberEntitlement
+      summary: Get an entitlement owned by the current member
+      security:
+        - memberBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/EntitlementNo'
+      responses:
+        '200':
+          description: Entitlement details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EntitlementDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/benefit-templates:
+    get:
+      tags: [AdminTemplate]
+      operationId: listBenefitTemplates
+      summary: List benefit templates
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [AdminTemplate]
+      operationId: createBenefitTemplate
+      summary: Create a benefit template
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitTemplateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/benefit-templates/{templateNo}:
+    get:
+      tags: [AdminTemplate]
+      operationId: getBenefitTemplate
+      summary: Get a benefit template
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/TemplateNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [AdminTemplate]
+      operationId: updateBenefitTemplate
+      summary: Update an unlocked benefit template
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/TemplateNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenefitTemplateRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/store-imports/preview:
+    post:
+      tags: [AdminStore]
+      operationId: previewStoreImport
+      summary: Upload and validate a versioned store CSV
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/store-imports/{importNo}/commit:
+    post:
+      tags: [AdminStore]
+      operationId: commitStoreImport
+      summary: Commit a successfully previewed store import
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ImportNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/store-imports/{importNo}:
+    get:
+      tags: [AdminStore]
+      operationId: getStoreImport
+      summary: Get store import validation and commit result
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ImportNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/campaigns:
+    get:
+      tags: [AdminCampaign]
+      operationId: listAdminCampaigns
+      summary: List campaigns for administration
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CampaignStatus'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericPage'
+    post:
+      tags: [AdminCampaign]
+      operationId: createCampaign
+      summary: Create a campaign draft
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/campaigns/{campaignNo}:
+    get:
+      tags: [AdminCampaign]
+      operationId: getAdminCampaign
+      summary: Get campaign details and version
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [AdminCampaign]
+      operationId: updateCampaign
+      summary: Update a campaign draft
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CampaignRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/campaigns/{campaignNo}/submit:
+    post:
+      tags: [AdminCampaign]
+      operationId: submitCampaign
+      summary: Submit a campaign draft for approval
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionedCommentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/campaigns/{campaignNo}/reviews:
+    post:
+      tags: [AdminCampaign]
+      operationId: reviewCampaign
+      summary: Approve or reject a submitted campaign
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/campaigns/{campaignNo}/terminate:
+    post:
+      tags: [AdminCampaign]
+      operationId: terminateCampaign
+      summary: Terminate an active campaign without deleting facts
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionedCommentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/campaigns/{campaignNo}/inventory-adjustments:
+    post:
+      tags: [AdminInventory]
+      operationId: createInventoryAdjustment
+      summary: Create a positive inventory adjustment draft
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/CampaignNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryAdjustmentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+  /api/v1/admin/inventory-adjustments/{adjustmentNo}:
+    get:
+      tags: [AdminInventory]
+      operationId: getInventoryAdjustment
+      summary: Get approval and apply status for an inventory adjustment
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/AdjustmentNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/inventory-adjustments/{adjustmentNo}/submit:
+    post:
+      tags: [AdminInventory]
+      operationId: submitInventoryAdjustment
+      summary: Submit an inventory adjustment for approval
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/AdjustmentNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionedCommentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/inventory-adjustments/{adjustmentNo}/reviews:
+    post:
+      tags: [AdminInventory]
+      operationId: reviewInventoryAdjustment
+      summary: Approve or reject an inventory adjustment
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/AdjustmentNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustmentReviewRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/business-traces:
+    get:
+      tags: [AdminOperations]
+      operationId: getBusinessTrace
+      summary: Trace a business chain by one external business identifier
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: identifierType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [CLAIM_NO, EVENT_ID, ENTITLEMENT_NO, POS_REQUEST_NO, REDEMPTION_NO, RECON_BATCH_NO, SETTLEMENT_BATCH_NO]
+        - name: identifierValue
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/exceptions:
+    get:
+      tags: [AdminOperations]
+      operationId: listBusinessExceptions
+      summary: List operational business exceptions
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: exceptionType
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericPage'
+  /api/v1/admin/recon-batches:
+    get:
+      tags: [AdminReconciliation]
+      operationId: listReconBatches
+      summary: List POS reconciliation batches
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: businessDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ReconStatus'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericPage'
+  /api/v1/admin/recon-batches/{reconBatchNo}:
+    get:
+      tags: [AdminReconciliation]
+      operationId: getReconBatch
+      summary: Get reconciliation totals, validation errors and differences
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ReconBatchNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/recon-batches/{reconBatchNo}/retry:
+    post:
+      tags: [AdminReconciliation]
+      operationId: retryReconBatch
+      summary: Retry a recoverable import or matching step
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ReconBatchNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionedCommentRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/recon-batches/{reconBatchNo}/settlement-batch:
+    post:
+      tags: [AdminSettlement]
+      operationId: generateSettlementBatch
+      summary: Generate a settlement batch from eligible franchise details
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/ReconBatchNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementGenerateRequest'
+      responses:
+        '200':
+          description: Batch generated, returned idempotently, or no settlement required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericObjectResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/settlement-batches:
+    get:
+      tags: [AdminSettlement]
+      operationId: listSettlementBatches
+      summary: List settlement batches
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/PageNo'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/SettlementBatchStatus'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericPage'
+  /api/v1/admin/settlement-batches/{settlementBatchNo}:
+    get:
+      tags: [AdminSettlement]
+      operationId: getSettlementBatch
+      summary: Get settlement batch totals and eligible details
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/SettlementBatchNo'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/admin/settlement-batches/{settlementBatchNo}/confirm:
+    post:
+      tags: [AdminSettlement]
+      operationId: confirmSettlementBatch
+      summary: Confirm an entire unchanged settlement batch
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/SettlementBatchNo'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettlementConfirmRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/admin/settlement-batches/{settlementBatchNo}/export:
+    get:
+      tags: [AdminSettlement]
+      operationId: exportSettlementBatch
+      summary: Export review details without implying payment
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/SettlementBatchNo'
+      responses:
+        '200':
+          description: UTF-8 CSV export
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    memberBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token
+    adminBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-token
+  parameters:
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      description: Caller-generated trace identifier and idempotency key for mutations
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+        pattern: '^[A-Za-z0-9._:-]+$'
+    PageNo:
+      name: pageNo
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CampaignNo:
+      name: campaignNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    ClaimNo:
+      name: claimNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    EntitlementNo:
+      name: entitlementNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    TemplateNo:
+      name: templateNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    ImportNo:
+      name: importNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    AdjustmentNo:
+      name: adjustmentNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    ReconBatchNo:
+      name: reconBatchNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+    SettlementBatchNo:
+      name: settlementBatchNo
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/BusinessNo'
+  responses:
+    GenericObject:
+      description: Successful object response; detailed fields are frozen by the human-readable interface design
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericObjectResponse'
+    GenericPage:
+      description: Successful page response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GenericPageResponse'
+    Unauthorized:
+      description: Missing, invalid or expired authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated but not authorized or business principal is frozen
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found or not visible to the caller
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency digest, state or optimistic version conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unprocessable:
+      description: Structurally valid request rejected by business validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Temporary dependency or platform failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    BusinessNo:
+      type: string
+      minLength: 8
+      maxLength: 64
+      pattern: '^[A-Za-z0-9._:-]+$'
+    SessionExchangeRequest:
+      type: object
+      additionalProperties: false
+      required: [memberToken]
+      properties:
+        memberToken:
+          type: string
+          minLength: 8
+          maxLength: 2048
+          writeOnly: true
+    SessionExchangeResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [accessToken, tokenType, expiresAt, member]
+          properties:
+            accessToken:
+              type: string
+              writeOnly: true
+            tokenType:
+              type: string
+              enum: [Bearer]
+            expiresAt:
+              type: string
+              format: date-time
+            member:
+              type: object
+              additionalProperties: false
+              required: [memberNoMasked]
+              properties:
+                memberNoMasked:
+                  type: string
+                levelCode:
+                  type: string
+                  nullable: true
+    BenefitType:
+      type: string
+      enum: [FREE_PRODUCT, CASH_DISCOUNT]
+    CampaignStatus:
+      type: string
+      enum: [DRAFT, PENDING_APPROVAL, REJECTED, SCHEDULED, ACTIVE, ENDED, TERMINATED]
+    EntitlementStatus:
+      type: string
+      enum: [AVAILABLE, USED, EXPIRED, CANCELLED]
+    CampaignSummary:
+      type: object
+      additionalProperties: false
+      required: [campaignNo, name, benefitType, title, beginAt, endAt, claimStatus]
+      properties:
+        campaignNo:
+          $ref: '#/components/schemas/BusinessNo'
+        name:
+          type: string
+          maxLength: 128
+        benefitType:
+          $ref: '#/components/schemas/BenefitType'
+        title:
+          type: string
+          maxLength: 128
+        beginAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        claimStatus:
+          type: string
+          enum: [ELIGIBLE, ALREADY_CLAIMED, SOLD_OUT, NOT_ACTIVE]
+    CampaignPageResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [items, pageNo, pageSize, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/CampaignSummary'
+            pageNo:
+              type: integer
+            pageSize:
+              type: integer
+            total:
+              type: integer
+              format: int64
+    CampaignDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          allOf:
+            - $ref: '#/components/schemas/CampaignSummary'
+            - type: object
+              properties:
+                rules:
+                  type: object
+                  additionalProperties: true
+                applicableStores:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+    ClaimRequest:
+      type: object
+      additionalProperties: false
+      required: [clientRequestedAt]
+      properties:
+        clientRequestedAt:
+          type: string
+          format: date-time
+    ClaimResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK, ACCEPTED]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [claimNo, status]
+          properties:
+            claimNo:
+              $ref: '#/components/schemas/BusinessNo'
+            status:
+              type: string
+              enum: [PROCESSING, COMPENSATING, SUCCESS, FAILED]
+            nextPollAfterMillis:
+              type: integer
+              minimum: 100
+              nullable: true
+    ClaimResultResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [claimNo, status, updatedAt]
+          properties:
+            claimNo:
+              $ref: '#/components/schemas/BusinessNo'
+            status:
+              type: string
+              enum: [PROCESSING, COMPENSATING, SUCCESS, FAILED]
+            entitlementNo:
+              allOf:
+                - $ref: '#/components/schemas/BusinessNo'
+              nullable: true
+            failureCode:
+              type: string
+              nullable: true
+            updatedAt:
+              type: string
+              format: date-time
+    EntitlementSummary:
+      type: object
+      additionalProperties: false
+      required: [entitlementNo, title, benefitType, status, validFrom, validUntil]
+      properties:
+        entitlementNo:
+          $ref: '#/components/schemas/BusinessNo'
+        title:
+          type: string
+        benefitType:
+          $ref: '#/components/schemas/BenefitType'
+        status:
+          $ref: '#/components/schemas/EntitlementStatus'
+        validFrom:
+          type: string
+          format: date-time
+        validUntil:
+          type: string
+          format: date-time
+        applicableStoreSummary:
+          type: object
+          additionalProperties: true
+    EntitlementPageResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [items, pageNo, pageSize, total]
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/EntitlementSummary'
+            pageNo:
+              type: integer
+            pageSize:
+              type: integer
+            total:
+              type: integer
+              format: int64
+    EntitlementDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          allOf:
+            - $ref: '#/components/schemas/EntitlementSummary'
+            - type: object
+              properties:
+                protectedRightCode:
+                  type: string
+                  nullable: true
+                redemptionSummary:
+                  type: object
+                  nullable: true
+                  additionalProperties: true
+    BenefitTemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [templateName, benefitType, title, validityType, usageRules]
+      properties:
+        templateName:
+          type: string
+          minLength: 1
+          maxLength: 128
+        benefitType:
+          $ref: '#/components/schemas/BenefitType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 1024
+        productCode:
+          type: string
+          maxLength: 64
+          nullable: true
+        benefitValueFen:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        validityType:
+          type: string
+          enum: [FIXED_RANGE, RELATIVE_DAYS]
+        validityValue:
+          type: integer
+          minimum: 1
+          nullable: true
+        validFrom:
+          type: string
+          format: date-time
+          nullable: true
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+        usageRules:
+          type: object
+          additionalProperties: true
+    CampaignRequest:
+      type: object
+      additionalProperties: false
+      required: [name, templateNo, claimBeginAt, claimEndAt, initialStock, memberClaimLimit, storeCodes]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 1024
+        templateNo:
+          $ref: '#/components/schemas/BusinessNo'
+        claimBeginAt:
+          type: string
+          format: date-time
+        claimEndAt:
+          type: string
+          format: date-time
+        initialStock:
+          type: integer
+          format: int64
+          minimum: 1
+        memberClaimLimit:
+          type: integer
+          enum: [1]
+        storeCodes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 32
+        franchiseSubsidyFen:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Required for updates and omitted when creating a new draft
+    VersionedCommentRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, comment]
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 512
+    ReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, expectedVersion, comment]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVE, REJECT]
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 512
+    InventoryAdjustmentRequest:
+      type: object
+      additionalProperties: false
+      required: [incrementStock, reason, expectedCampaignVersion]
+      properties:
+        incrementStock:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+        expectedCampaignVersion:
+          type: integer
+          format: int64
+          minimum: 0
+    AdjustmentReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [decision, expectedAdjustmentVersion, comment]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVE, REJECT]
+        expectedAdjustmentVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 512
+    SettlementGenerateRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedReconVersion, comment]
+      properties:
+        expectedReconVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 512
+    SettlementConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, expectedDetailCount, expectedTotalSubsidyFen, comment]
+      properties:
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedDetailCount:
+          type: integer
+          format: int64
+          minimum: 0
+        expectedTotalSubsidyFen:
+          type: integer
+          format: int64
+          minimum: 0
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 512
+    ReconStatus:
+      type: string
+      enum: [RECEIVED, IMPORTING, MATCHING, COMPLETED, PARTIAL_FAILED, CONFLICT, MISSING]
+    SettlementBatchStatus:
+      type: string
+      enum: [DRAFT, PENDING_CONFIRM, CONFIRMED]
+    GenericObjectResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+    GenericPageResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [items, pageNo, pageSize, total]
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                additionalProperties: true
+            pageNo:
+              type: integer
+              minimum: 1
+            pageSize:
+              type: integer
+              minimum: 1
+              maximum: 100
+            total:
+              type: integer
+              format: int64
+              minimum: 0
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_ARGUMENT
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - RESOURCE_NOT_FOUND
+            - REQUEST_CONFLICT
+            - VERSION_CONFLICT
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+            - SYSTEM_BUSY
+            - TOKEN_INVALID
+            - TOKEN_EXPIRED
+            - MEMBER_FROZEN
+            - MEMBER_CANCELLED
+            - ALREADY_CLAIMED
+            - SOLD_OUT
+            - CAMPAIGN_NOT_ACTIVE
+            - TEMPLATE_VERSION_LOCKED
+            - CAMPAIGN_STATE_CONFLICT
+            - CAMPAIGN_INCOMPLETE
+            - SELF_APPROVAL_NOT_ALLOWED
+            - STORE_NOT_ELIGIBLE
+            - STORE_IMPORT_CONFLICT
+            - INVENTORY_INCREMENT_INVALID
+            - INVENTORY_ADJUSTMENT_NOT_ALLOWED
+            - INVENTORY_APPLY_PENDING
+            - RECON_BATCH_CONFLICT
+            - RECON_FILE_INVALID
+            - RECON_NOT_COMPLETED
+            - SETTLEMENT_BATCH_CHANGED
+            - SETTLEMENT_LOCKED
+        message:
+          type: string
+          maxLength: 512
+        requestId:
+          type: string
+        details:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+x-contract-decisions:
+  - Member identity is taken only from an introspected platform session, never a request body member number.
+  - A claim success response requires a queryable member entitlement.
+  - Direct stores reconcile but never create subsidy candidates or settlement details.
+  - All franchise stores in one campaign share the same published subsidy snapshot.
+  - Published campaign inventory can only increase through an independently approved adjustment.
+  - Finance confirms an unchanged settlement batch as a whole; confirmation does not mean payment.

@@ -1,0 +1,225 @@
+openapi: 3.0.3
+info:
+  title: 青禾茶饮会员中心模拟接口契约
+  version: 0.1.0
+  description: |
+    权益平台调用会员中心进行会员 Token 校验的模拟契约。
+    本文件由项目组为 Mock 和契约测试编写，不是任何真实厂商提供的接口文档。
+servers:
+  - url: https://mock-member-center.local
+    description: 本地或测试 Mock 地址，占位值
+tags:
+  - name: MemberSession
+paths:
+  /openapi/v1/member-sessions/introspect:
+    post:
+      tags: [MemberSession]
+      summary: 校验会员 Token 并返回最小会员身份
+      operationId: introspectMemberSession
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XNonce'
+        - $ref: '#/components/parameters/XSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrospectRequest'
+            examples:
+              valid:
+                value:
+                  memberToken: mock-member-token-active
+      responses:
+        '200':
+          description: Token 有效且会员状态允许建立平台会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectSuccessResponse'
+        '401':
+          description: Token 无效或过期，不应重试同一个 Token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidToken:
+                  value:
+                    code: TOKEN_INVALID
+                    message: member token is invalid
+                    requestId: req-member-001
+        '403':
+          description: 会员已冻结或注销，属于业务失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                frozen:
+                  value:
+                    code: MEMBER_FROZEN
+                    message: member is frozen
+                    requestId: req-member-001
+        '429':
+          description: 会员中心限流，可以按照 Retry-After 有限重试
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+                minimum: 1
+              description: 建议等待秒数
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: 会员中心暂时不可用，不允许降级为信任前端会员编号
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  parameters:
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: true
+      description: 调用方生成的唯一请求号，用于追踪，不携带会员隐私
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    XClientId:
+      name: X-Client-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 64
+    XTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      description: Unix 时间戳秒，允许偏差由双方环境配置
+      schema:
+        type: integer
+        format: int64
+    XNonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    XSignature:
+      name: X-Signature
+      in: header
+      required: true
+      description: 模拟 HMAC-SHA256 签名；正式串联规则仍待技术设计
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 128
+  schemas:
+    IntrospectRequest:
+      type: object
+      additionalProperties: false
+      required: [memberToken]
+      properties:
+        memberToken:
+          type: string
+          minLength: 8
+          maxLength: 2048
+          writeOnly: true
+          description: 小程序取得的会员登录凭证，不得写入普通日志
+    IntrospectSuccessResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          $ref: '#/components/schemas/MemberIdentity'
+    MemberIdentity:
+      type: object
+      additionalProperties: false
+      required: [memberNo, status, tokenExpiresAt]
+      properties:
+        memberNo:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: 会员中心稳定的外部会员编号
+        status:
+          type: string
+          enum: [ACTIVE]
+        levelCode:
+          type: string
+          maxLength: 32
+          nullable: true
+          description: 一期无等级资格时可以不返回
+        tokenExpiresAt:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          enum:
+            - TOKEN_INVALID
+            - TOKEN_EXPIRED
+            - MEMBER_FROZEN
+            - MEMBER_CANCELLED
+            - RATE_LIMITED
+            - SYSTEM_BUSY
+            - SIGNATURE_INVALID
+        message:
+          type: string
+        requestId:
+          type: string
+x-mock-behaviors:
+  tokens:
+    mock-member-token-active:
+      httpStatus: 200
+      memberNo: M100086
+      status: ACTIVE
+    mock-member-token-invalid:
+      httpStatus: 401
+      code: TOKEN_INVALID
+    mock-member-token-expired:
+      httpStatus: 401
+      code: TOKEN_EXPIRED
+    mock-member-token-frozen:
+      httpStatus: 403
+      code: MEMBER_FROZEN
+    mock-member-token-cancelled:
+      httpStatus: 403
+      code: MEMBER_CANCELLED
+    mock-member-token-timeout:
+      behavior: timeout
+      delayMillis: 1500
+    mock-member-token-rate-limited:
+      httpStatus: 429
+      code: RATE_LIMITED
+      retryAfterSeconds: 1
+    mock-member-token-malformed:
+      httpStatus: 200
+      behavior: omit-required-data
+x-contract-decisions:
+  - 领取请求不得直接信任小程序传入的 memberNo
+  - 会员中心超时时不得默认放行
+  - 平台会话建立后，领取主链路不再同步调用本接口
+  - 会员冻结状态实时同步不在本契约 0.1 范围内

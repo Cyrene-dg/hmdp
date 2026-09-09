@@ -1,0 +1,12 @@
+{
+  "provider": "MOCK_POS_VENDOR",
+  "batchNo": "POSB20260908001",
+  "businessDate": "2026-09-08",
+  "schemaVersion": "1.0",
+  "fileName": "POS_20260908_POSB20260908001.csv",
+  "rowCount": 2,
+  "checksumAlgorithm": "SHA-256",
+  "checksum": "73deea267f6bf374df0ce20cb7dec94a4efee4dcdcfad62186cab11762e80031",
+  "generatedAt": "2026-09-09T02:00:05+08:00",
+  "correctionOfBatchNo": null
+}

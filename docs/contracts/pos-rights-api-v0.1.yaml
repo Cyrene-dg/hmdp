@@ -1,0 +1,504 @@
+openapi: 3.0.3
+info:
+  title: 青禾茶饮 POS 与权益履约模拟接口契约
+  version: 0.1.0
+  description: |
+    POS 调用权益平台完成验券、核销、原结果查询和当天原单撤销的模拟契约。
+    本文件用于 Mock、契约测试和后续设计输入，不代表真实 POS 厂商已经确认或完成联调。
+servers:
+  - url: https://mock-rights-platform.local
+    description: 本地或测试 Mock 地址，占位值
+tags:
+  - name: Verification
+  - name: Redemption
+paths:
+  /openapi/v1/rights/verify:
+    post:
+      tags: [Verification]
+      summary: 验证权益当前是否可在指定门店使用
+      description: 验券不锁定权益，不保证之后的核销一定成功。
+      operationId: verifyRight
+      parameters:
+        - $ref: '#/components/parameters/XPosRequestId'
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XNonce'
+        - $ref: '#/components/parameters/XSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+      responses:
+        '200':
+          description: 权益当前可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifySuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/BusinessConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /openapi/v1/redemptions:
+    post:
+      tags: [Redemption]
+      summary: 幂等核销一份权益
+      description: |
+        相同 posRequestNo 必须返回首次处理结果。不同请求同时核销同一权益时最多一个成功。
+        HTTP 响应丢失后，POS 必须使用原 posRequestNo 查询结果，不得盲目生成新请求。
+      operationId: redeemRight
+      parameters:
+        - $ref: '#/components/parameters/XPosRequestId'
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XNonce'
+        - $ref: '#/components/parameters/XSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RedeemRequest'
+      responses:
+        '200':
+          description: 核销成功，或相同请求号重复调用时返回首次成功结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionResponse'
+        '202':
+          description: 请求仍在处理，POS 应查询原结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/BusinessConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /openapi/v1/redemptions/by-request/{posRequestNo}:
+    get:
+      tags: [Redemption]
+      summary: 根据 POS 原请求号查询首次核销结果
+      operationId: queryRedemptionByPosRequestNo
+      parameters:
+        - name: posRequestNo
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 64
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XNonce'
+        - $ref: '#/components/parameters/XSignature'
+      responses:
+        '200':
+          description: 找到原请求的终态结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionResponse'
+        '202':
+          description: 原请求仍在处理中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RedemptionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 没有找到原请求，不能据此断言第一次一定没有成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /openapi/v1/redemptions/{redemptionNo}/reversals:
+    post:
+      tags: [Redemption]
+      summary: 申请当天原单撤销
+      description: 跨日、权益规则不允许或结算已锁定时不执行自动撤销。
+      operationId: reverseRedemption
+      parameters:
+        - name: redemptionNo
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 64
+        - $ref: '#/components/parameters/XPosRequestId'
+        - $ref: '#/components/parameters/XClientId'
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XNonce'
+        - $ref: '#/components/parameters/XSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReversalRequest'
+      responses:
+        '200':
+          description: 撤销成功，或相同撤销请求重复调用时返回首次成功结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReversalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/BusinessConflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  parameters:
+    XPosRequestId:
+      name: X-POS-Request-Id
+      in: header
+      required: true
+      description: 与请求体 posRequestNo 一致，用于网关追踪与幂等检查
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    XClientId:
+      name: X-Client-Id
+      in: header
+      required: true
+      description: 标识 POS 接入方，不等同于门店编号
+      schema:
+        type: string
+        maxLength: 64
+    XTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+    XNonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 64
+    XSignature:
+      name: X-Signature
+      in: header
+      required: true
+      description: 模拟 HMAC-SHA256 签名；正式串联和密钥轮换规则待设计
+      schema:
+        type: string
+        minLength: 32
+        maxLength: 128
+  responses:
+    BadRequest:
+      description: 参数、时间戳或请求格式错误，不应使用原参数无限重试
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: POS 身份或签名验证失败
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BusinessConflict:
+      description: 权益状态、门店范围、请求冲突或结算状态不允许当前操作
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: 平台暂时不可用；核销类请求的调用方必须随后查询原结果
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    VerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [posRequestNo, storeCode, terminalNo, rightCode, requestedAt]
+      properties:
+        posRequestNo:
+          $ref: '#/components/schemas/BusinessRequestNo'
+        storeCode:
+          $ref: '#/components/schemas/StoreCode'
+        terminalNo:
+          type: string
+          minLength: 1
+          maxLength: 32
+        rightCode:
+          $ref: '#/components/schemas/RightCode'
+        requestedAt:
+          type: string
+          format: date-time
+    VerifySuccessResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          $ref: '#/components/schemas/RightSnapshot'
+    RightSnapshot:
+      type: object
+      additionalProperties: false
+      required: [rightNo, title, status, validUntil, benefitType]
+      properties:
+        rightNo:
+          type: string
+          maxLength: 64
+        title:
+          type: string
+          maxLength: 128
+        status:
+          type: string
+          enum: [AVAILABLE]
+        validUntil:
+          type: string
+          format: date-time
+        benefitType:
+          type: string
+          enum: [FREE_PRODUCT, CASH_DISCOUNT]
+        productCode:
+          type: string
+          maxLength: 64
+          nullable: true
+        benefitValueFen:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+    RedeemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - posRequestNo
+        - posOrderNo
+        - storeCode
+        - terminalNo
+        - operatorNo
+        - rightCode
+        - occurredAt
+      properties:
+        posRequestNo:
+          $ref: '#/components/schemas/BusinessRequestNo'
+        posOrderNo:
+          type: string
+          minLength: 1
+          maxLength: 64
+        storeCode:
+          $ref: '#/components/schemas/StoreCode'
+        terminalNo:
+          type: string
+          minLength: 1
+          maxLength: 32
+        operatorNo:
+          type: string
+          minLength: 1
+          maxLength: 32
+        rightCode:
+          $ref: '#/components/schemas/RightCode'
+        occurredAt:
+          type: string
+          format: date-time
+    RedemptionResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [posRequestNo, status]
+          properties:
+            posRequestNo:
+              $ref: '#/components/schemas/BusinessRequestNo'
+            redemptionNo:
+              type: string
+              maxLength: 64
+              nullable: true
+            status:
+              type: string
+              enum: [PROCESSING, SUCCESS, FAILED]
+            firstProcessedAt:
+              type: string
+              format: date-time
+              nullable: true
+            rightStatus:
+              type: string
+              enum: [AVAILABLE, USED, EXPIRED, CANCELLED]
+              nullable: true
+            failureCode:
+              type: string
+              nullable: true
+    ReversalRequest:
+      type: object
+      additionalProperties: false
+      required: [posRequestNo, posOrderNo, storeCode, operatorNo, reasonCode, occurredAt]
+      properties:
+        posRequestNo:
+          $ref: '#/components/schemas/BusinessRequestNo'
+        posOrderNo:
+          type: string
+          maxLength: 64
+        storeCode:
+          $ref: '#/components/schemas/StoreCode'
+        operatorNo:
+          type: string
+          maxLength: 32
+        reasonCode:
+          type: string
+          enum: [POS_ORDER_CANCELLED, WRONG_RIGHT, OPERATOR_MISTAKE, OTHER]
+        reasonRemark:
+          type: string
+          maxLength: 256
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+    ReversalResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId, data]
+      properties:
+        code:
+          type: string
+          enum: [OK]
+        message:
+          type: string
+        requestId:
+          type: string
+        data:
+          type: object
+          additionalProperties: false
+          required: [reversalNo, redemptionNo, status, rightStatus]
+          properties:
+            reversalNo:
+              type: string
+              maxLength: 64
+            redemptionNo:
+              type: string
+              maxLength: 64
+            status:
+              type: string
+              enum: [SUCCESS]
+            rightStatus:
+              type: string
+              enum: [AVAILABLE, EXPIRED, CANCELLED]
+            firstProcessedAt:
+              type: string
+              format: date-time
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [code, message, requestId]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_ARGUMENT
+            - SIGNATURE_INVALID
+            - REQUEST_EXPIRED
+            - REQUEST_CONFLICT
+            - RIGHT_NOT_FOUND
+            - RIGHT_NOT_AVAILABLE
+            - RIGHT_EXPIRED
+            - STORE_NOT_APPLICABLE
+            - ALREADY_REDEEMED
+            - REDEMPTION_NOT_FOUND
+            - REVERSAL_NOT_ALLOWED
+            - SETTLEMENT_LOCKED
+            - RATE_LIMITED
+            - SYSTEM_BUSY
+        message:
+          type: string
+        requestId:
+          type: string
+        originalRedemptionNo:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: 安全允许时返回首次核销流水号
+    BusinessRequestNo:
+      type: string
+      minLength: 8
+      maxLength: 64
+      pattern: '^[A-Za-z0-9._:-]+$'
+    StoreCode:
+      type: string
+      minLength: 1
+      maxLength: 32
+    RightCode:
+      type: string
+      minLength: 8
+      maxLength: 128
+      description: 不透明券码，POS 不得自行解析业务规则
+x-reconciliation-file-contract:
+  status: simulated-draft
+  transport: SFTP
+  schedule: 每日 02:00 生成前一北京时间自然日文件
+  fileNamePattern: POS_yyyyMMdd_BATCHnnn.csv
+  encoding: UTF-8
+  delimiter: comma
+  emptyDayRule: 即使零交易也生成仅含表头的空文件
+  duplicateRule: 相同批次号且相同文件校验值视为重复，不重复导入
+  conflictRule: 相同批次号但校验值不同视为冲突，冻结该业务日自动结算
+  requiredColumns:
+    - batch_no
+    - business_date
+    - store_code
+    - terminal_no
+    - pos_order_no
+    - pos_request_no
+    - platform_redemption_no
+    - right_code
+    - operation_type
+    - operation_status
+    - occurred_at
+  operationTypes: [REDEEM, REVERSE]
+  operationStatuses: [SUCCESS, FAILED]
+  correctionRule: 更正文件必须使用新批次号并引用原批次号，禁止覆盖已导入原文件
+x-contract-decisions:
+  - 验券不锁券
+  - 同一核销请求号重复调用返回首次结果
+  - 核销响应未知时先查询原结果
+  - 不同请求并发核销同一权益最多一个成功
+  - 直营店成功核销不生成补贴候选但仍参加 T+1 对账
+  - 加盟店成功核销在同一业务提交中生成补贴候选
+  - 在线撤销仅限当天原单且结算未锁定
+  - 一期不支持离线核销

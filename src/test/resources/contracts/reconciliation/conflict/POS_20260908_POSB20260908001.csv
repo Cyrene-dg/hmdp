@@ -1,0 +1,2 @@
+batch_no,business_date,store_code,terminal_no,pos_order_no,pos_request_no,platform_redemption_no,right_code,operation_type,operation_status,occurred_at
+POSB20260908001,2026-09-08,QH006,T03,ORDER-QH006-CHANGED,REDEEM-QH006-20260908-0001,RDM20260908000001,RGT-F4B8N2K9Q6,REDEEM,SUCCESS,2026-09-08T14:52:10+08:00

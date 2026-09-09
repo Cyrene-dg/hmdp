@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qinghe.example.local/contracts/reconciliation-manifest-v1.0.schema.json",
+  "title": "Qinghe POS reconciliation manifest v1.0",
+  "description": "Simulated local contract. It is not a real POS vendor specification.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "batchNo",
+    "businessDate",
+    "schemaVersion",
+    "fileName",
+    "rowCount",
+    "checksumAlgorithm",
+    "checksum",
+    "generatedAt",
+    "correctionOfBatchNo"
+  ],
+  "properties": {
+    "provider": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "batchNo": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "businessDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "fileName": {
+      "type": "string",
+      "pattern": "^POS_[0-9]{8}_[A-Za-z0-9._:-]+\\.csv$"
+    },
+    "rowCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "checksumAlgorithm": {
+      "const": "SHA-256"
+    },
+    "checksum": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correctionOfBatchNo": {
+      "type": ["string", "null"],
+      "minLength": 8,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    }
+  }
+}
