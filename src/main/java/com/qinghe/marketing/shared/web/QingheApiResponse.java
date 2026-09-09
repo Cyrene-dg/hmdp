@@ -18,6 +18,10 @@ public final class QingheApiResponse<T> {
         return new QingheApiResponse<T>("OK", message, requestId, data);
     }
 
+    public static <T> QingheApiResponse<T> accepted(String message, String requestId, T data) {
+        return new QingheApiResponse<T>("ACCEPTED", message, requestId, data);
+    }
+
     public String getCode() { return code; }
     public String getMessage() { return message; }
     public String getRequestId() { return requestId; }

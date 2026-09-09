@@ -44,3 +44,18 @@ logging:
 
 auth:
   mode: hybrid
+
+qinghe:
+  outbox:
+    publisher:
+      enabled: ${QINGHE_OUTBOX_PUBLISHER_ENABLED:false}
+      batch-size: ${QINGHE_OUTBOX_BATCH_SIZE:50}
+      lease-seconds: ${QINGHE_OUTBOX_LEASE_SECONDS:30}
+      max-retries: ${QINGHE_OUTBOX_MAX_RETRIES:8}
+      scan-delay-ms: ${QINGHE_OUTBOX_SCAN_DELAY_MS:1000}
+      confirm-timeout-ms: ${QINGHE_OUTBOX_CONFIRM_TIMEOUT_MS:5000}
+  claim:
+    recovery:
+      enabled: ${QINGHE_CLAIM_RECOVERY_ENABLED:false}
+      orphan-seconds: ${QINGHE_CLAIM_ORPHAN_SECONDS:120}
+      scan-delay-ms: ${QINGHE_CLAIM_RECOVERY_SCAN_DELAY_MS:30000}
