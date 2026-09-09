@@ -5,7 +5,7 @@ info:
   description: |
     POS 调用权益平台完成验券、核销、原结果查询和当天原单撤销的模拟契约。
     本文件用于 Mock、契约测试和后续设计输入，不代表真实 POS 厂商已经确认或完成联调。
-    截至 WP-06，验券、核销和原请求查询已有本地业务实现与测试证据；撤销仍为后续工作。
+    截至 WP-07，验券、核销、原请求查询和当天撤销均已有本地业务实现与测试证据。
 servers:
   - url: https://mock-rights-platform.local
     description: 本地或测试 Mock 地址，占位值
@@ -136,7 +136,7 @@ paths:
       summary: 申请当天原单撤销
       description: 跨日、权益规则不允许或结算已锁定时不执行自动撤销。
       operationId: reverseRedemption
-      x-qinghe-implementation-status: planned-wp07
+      x-qinghe-implementation-status: local-implemented-wp07
       parameters:
         - name: redemptionNo
           in: path
