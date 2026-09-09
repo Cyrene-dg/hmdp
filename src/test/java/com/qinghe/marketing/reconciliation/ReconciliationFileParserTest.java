@@ -1,0 +1,66 @@
+package com.qinghe.marketing.reconciliation;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.qinghe.marketing.shared.error.QingheBusinessException;
+import com.qinghe.marketing.shared.error.QingheErrorCode;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.io.InputStream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class ReconciliationFileParserTest {
+    private final ReconciliationFileParser parser = new ReconciliationFileParser(new ObjectMapper());
+
+    @Test
+    void shouldParseFrozenValidAndEmptyFixtures() throws Exception {
+        ParsedReconciliationFile valid = parse("valid", "20260908", "POSB20260908001");
+        assertEquals(2, valid.rows().size());
+        assertEquals(0, valid.issues().size());
+        assertEquals("RDM20260908000001", valid.rows().get(0).redemptionNo());
+
+        ParsedReconciliationFile empty = parse("empty", "20260907", "POSB20260907001");
+        assertEquals(0, empty.rows().size());
+        assertEquals(0, empty.issues().size());
+    }
+
+    @Test
+    void shouldKeepBadRowLocationInsteadOfSilentlyDroppingIt() throws Exception {
+        ParsedReconciliationFile invalid = parse("invalid-row", "20260906", "POSB20260906001");
+        assertEquals(0, invalid.rows().size());
+        assertEquals(1, invalid.issues().size());
+        assertEquals(2, invalid.issues().get(0).lineNo());
+        assertEquals("ROW_FORMAT_INVALID", invalid.issues().get(0).code());
+    }
+
+    @Test
+    void shouldRejectRawByteChecksumMismatchBeforeParsingRows() throws Exception {
+        byte[] manifest = bytes("contracts/reconciliation/valid/"
+                + "POS_20260908_POSB20260908001.manifest.json");
+        byte[] csv = bytes("contracts/reconciliation/valid/"
+                + "POS_20260908_POSB20260908001.csv");
+        csv[csv.length - 1] ^= 1;
+        QingheBusinessException failure = assertThrows(QingheBusinessException.class,
+                () -> parser.parse(manifest, "POS_20260908_POSB20260908001.csv", csv));
+        assertEquals(QingheErrorCode.RECON_FILE_INVALID, failure.errorCode());
+    }
+
+    private ParsedReconciliationFile parse(String folder, String date, String batch) throws Exception {
+        String base = "contracts/reconciliation/" + folder + "/POS_" + date + "_" + batch;
+        return parser.parse(bytes(base + ".manifest.json"), "POS_" + date + "_" + batch + ".csv",
+                bytes(base + ".csv"));
+    }
+
+    private static byte[] bytes(String name) throws IOException {
+        try (InputStream input = ReconciliationFileParserTest.class.getClassLoader()
+                .getResourceAsStream(name)) {
+            if (input == null) throw new IOException("resource not found: " + name);
+            byte[] buffer = new byte[4096]; int count;
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
+            return output.toByteArray();
+        }
+    }
+}
