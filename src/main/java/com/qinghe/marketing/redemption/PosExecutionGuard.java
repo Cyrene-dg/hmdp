@@ -85,6 +85,10 @@ public class PosExecutionGuard {
         }
     }
 
+    public void idempotentHit(String operation) {
+        metrics.idempotentHit(operation);
+    }
+
     private void releaseOnce(AtomicBoolean released) {
         if (released.compareAndSet(false, true)) inFlight.release();
     }

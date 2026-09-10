@@ -81,6 +81,10 @@ public class ClaimExecutionGuard {
         }
     }
 
+    public void idempotentHit() {
+        metrics.idempotentHit();
+    }
+
     private void releaseOnce(AtomicBoolean released) {
         if (released.compareAndSet(false, true)) inFlight.release();
     }

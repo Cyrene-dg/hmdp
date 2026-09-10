@@ -76,6 +76,7 @@ class QingheWp07PersistenceIT {
             ReversalResult replay = transaction.execute(status -> service.reverse(store,
                     command("REVREQ-0001", "RDM-1", "ORDER-1")));
             assertEquals(success.reversalNo(), replay.reversalNo());
+            assertTrue(replay.replay());
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_redemption_reversal", Integer.class));
             assertEquals("REVERSED", jdbc.queryForObject("SELECT status FROM qh_redemption WHERE id=101", String.class));
             assertEquals("AVAILABLE", jdbc.queryForObject("SELECT status FROM qh_member_entitlement WHERE id=31", String.class));

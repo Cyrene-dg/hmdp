@@ -42,7 +42,7 @@ public class ReversalTransactionService {
                     request.targetRedemptionNo());
         }
         if (request.status() != ReversalRequestStatus.PROCESSING) {
-            return ReversalResult.from(request);
+            return ReversalResult.replay(request);
         }
 
         ReversibleRedemption redemption = repository.findRedemptionForUpdate(command.redemptionNo())

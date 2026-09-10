@@ -64,6 +64,7 @@ public class PosReversalController {
             ReversalResult result = service.reverse(store, new PosReversalCommand(redemptionNo,
                     body.posRequestNo, body.posOrderNo, body.storeCode, body.operatorNo, reason,
                     body.reasonRemark, businessTime(body.occurredAt)));
+            if (result.replay()) guard.idempotentHit("reversal");
             return QingheApiResponse.ok("reversal succeeded", headerRequestNo,
                     new ReversalData(result));
         });

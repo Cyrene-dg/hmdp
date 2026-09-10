@@ -96,3 +96,6 @@ qinghe:
       scheduler-enabled: ${QINGHE_RECON_FILE_SCHEDULER_ENABLED:false}
       scan-delay-ms: ${QINGHE_RECON_FILE_SCAN_DELAY_MS:60000}
       final-arrival-time: ${QINGHE_RECON_FINAL_ARRIVAL_TIME:03:00}
+  operations:
+    stuck-seconds: ${QINGHE_OPERATIONS_STUCK_SECONDS:300}
+    settlement-pending-seconds: ${QINGHE_OPERATIONS_SETTLEMENT_PENDING_SECONDS:86400}

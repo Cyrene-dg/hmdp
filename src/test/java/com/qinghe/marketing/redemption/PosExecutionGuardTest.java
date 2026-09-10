@@ -48,6 +48,8 @@ class PosExecutionGuardTest {
         assertEquals("ok", first.get());
         assertEquals(1, metrics.snapshot("redeem").rejected());
         assertEquals(1, metrics.snapshot("redeem").succeeded());
+        guard.idempotentHit("redeem");
+        assertEquals(1, metrics.snapshot("redeem").idempotentHits());
     }
 
     @Test

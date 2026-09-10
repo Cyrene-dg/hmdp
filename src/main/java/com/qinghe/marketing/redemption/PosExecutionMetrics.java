@@ -23,11 +23,13 @@ public class PosExecutionMetrics {
         counters.failed.incrementAndGet();
         counters.durationNanos.addAndGet(durationNanos);
     }
+    void idempotentHit(String operation) { counters(operation).idempotentHits.incrementAndGet(); }
 
     public Snapshot snapshot(String operation) {
         OperationCounters counters = counters(operation);
         return new Snapshot(counters.accepted.get(), counters.rejected.get(),
-                counters.succeeded.get(), counters.failed.get(), counters.durationNanos.get());
+                counters.succeeded.get(), counters.failed.get(), counters.idempotentHits.get(),
+                counters.durationNanos.get());
     }
 
     private OperationCounters counters(String operation) {
@@ -39,6 +41,7 @@ public class PosExecutionMetrics {
         private final AtomicLong rejected = new AtomicLong();
         private final AtomicLong succeeded = new AtomicLong();
         private final AtomicLong failed = new AtomicLong();
+        private final AtomicLong idempotentHits = new AtomicLong();
         private final AtomicLong durationNanos = new AtomicLong();
     }
 
@@ -47,16 +50,20 @@ public class PosExecutionMetrics {
         private final long rejected;
         private final long succeeded;
         private final long failed;
+        private final long idempotentHits;
         private final long durationNanos;
 
-        Snapshot(long accepted, long rejected, long succeeded, long failed, long durationNanos) {
+        Snapshot(long accepted, long rejected, long succeeded, long failed, long idempotentHits,
+                 long durationNanos) {
             this.accepted = accepted; this.rejected = rejected; this.succeeded = succeeded;
-            this.failed = failed; this.durationNanos = durationNanos;
+            this.failed = failed; this.idempotentHits = idempotentHits;
+            this.durationNanos = durationNanos;
         }
         public long accepted() { return accepted; }
         public long rejected() { return rejected; }
         public long succeeded() { return succeeded; }
         public long failed() { return failed; }
+        public long idempotentHits() { return idempotentHits; }
         public long durationNanos() { return durationNanos; }
     }
 }

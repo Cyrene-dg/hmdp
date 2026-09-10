@@ -117,6 +117,7 @@ class QingheWp06PersistenceIT {
             RedemptionResult replay = transaction.execute(status -> service.redeem(direct,
                     redeemCommand("REQUEST-DIRECT-1", "ORDER-DIRECT-1", "S001", "RIGHT-DIRECT")));
             assertEquals(first.redemptionNo(), replay.redemptionNo());
+            assertTrue(replay.replay());
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_redemption", Integer.class));
             assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM qh_subsidy_candidate", Integer.class));
             assertEquals(first.redemptionNo(), service.query(direct, "REQUEST-DIRECT-1").redemptionNo());
