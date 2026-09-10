@@ -5,12 +5,19 @@ import com.qinghe.marketing.shared.clock.SystemBusinessClock;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
 import com.qinghe.marketing.shared.trace.TraceIdFilter;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 import java.util.Arrays;
 
+import com.hmdp.HmDianPingApplication;
+import com.qinghe.marketing.configuration.LegacyHmdpRuntimeConfiguration;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -31,6 +38,19 @@ class QingheIsolatedContextTest {
                             || name.contains("hmDianPingApplication")),
                     "isolated Qinghe context must not start legacy services or RabbitMQ consumers");
         }
+    }
+
+    @Test
+    void applicationShouldScanQingheOnlyAndKeepLegacyRuntimeOptIn() {
+        SpringBootApplication application = HmDianPingApplication.class
+                .getAnnotation(SpringBootApplication.class);
+        assertArrayEquals(new String[]{"com.qinghe.marketing"}, application.scanBasePackages());
+
+        ConditionalOnProperty legacySwitch = LegacyHmdpRuntimeConfiguration.class
+                .getAnnotation(ConditionalOnProperty.class);
+        assertEquals("legacy.hmdp.endpoints-enabled", legacySwitch.name()[0]);
+        assertEquals("true", legacySwitch.havingValue());
+        assertFalse(legacySwitch.matchIfMissing());
     }
 
     @Configuration

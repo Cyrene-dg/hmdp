@@ -1,13 +1,11 @@
 package com.hmdp;
 
-import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@MapperScan("com.hmdp.mapper")
-@SpringBootApplication(scanBasePackages = {"com.hmdp", "com.qinghe.marketing"})
+@SpringBootApplication(scanBasePackages = "com.qinghe.marketing")
 @EnableAspectJAutoProxy(exposeProxy = true)
 @EnableScheduling
 public class HmDianPingApplication {
