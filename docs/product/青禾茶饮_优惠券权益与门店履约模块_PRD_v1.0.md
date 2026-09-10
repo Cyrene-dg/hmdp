@@ -932,10 +932,10 @@ DRAFT → PENDING_CONFIRM → CONFIRMED
 产品需求基线：FROZEN（模拟）
 技术方案：修改后通过（模拟）
 开发任务拆分：DONE（规划）
-业务代码：NOT_STARTED
+业务代码：IN_PROGRESS（WP-00 至 WP-08 DONE）
 PoC：NOT_RUN
 真实外部联调：NOT_APPLICABLE
 生产上线：NOT_STARTED
 ```
 
-WP-00 已建立可控会员中心 Mock、POS 模拟客户端、机器契约和可运行测试骨架；下一项为 WP-01 新领域工程与数据迁移骨架。行为用例仍需在相应功能实现后才能转为真实 PASS/FAIL。
+WP-00 至 WP-08 已建立可控 Mock、领域工程、活动领取、异步发券、卡包、POS 履约、当天撤销、T+1 对账与结算复核的本地模拟实现和自动化证据；下一项为 WP-09 运营查询与可观测性。尚未执行的系统级 PoC、外部联调和生产上线仍不得写成完成态。
