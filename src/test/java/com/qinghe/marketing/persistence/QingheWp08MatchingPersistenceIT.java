@@ -120,7 +120,7 @@ class QingheWp08MatchingPersistenceIT {
 
             assertEquals(0, summary.unmatchedRows());
             assertEquals(4, summary.matchedRows());
-            assertEquals(4, summary.differenceRows());
+            assertEquals(5, summary.differenceRows());
             assertEquals(1, summary.directMatchedRows());
             assertEquals(1, summary.franchiseEligibleRows());
             assertEquals("COMPLETED", jdbc.queryForObject("SELECT status FROM qh_recon_batch "
@@ -142,13 +142,16 @@ class QingheWp08MatchingPersistenceIT {
                     + "WHERE difference_type='DIFFERENCE_PLATFORM_ONLY'", Integer.class));
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_difference "
                     + "WHERE difference_type='DIFFERENCE_STATUS'", Integer.class));
-            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_difference "
+            assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_difference "
                     + "WHERE difference_type='DIFFERENCE_DATA'", Integer.class));
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_difference "
+                    + "WHERE detail='duplicate POS request in the same reconciliation batch'",
+                    Integer.class));
 
             ReconciliationMatchSummary replay = new ReconciliationMatchingService(
                     matchingTransactions, matchingCompletion).match(batchId(jdbc), 2);
             assertEquals(4, replay.matchedRows());
-            assertEquals(4, replay.differenceRows());
+            assertEquals(5, replay.differenceRows());
             assertEquals(1, jdbc.queryForObject(
                     "SELECT COUNT(*) FROM qh_settlement_detail", Integer.class));
 
@@ -206,6 +209,7 @@ class QingheWp08MatchingPersistenceIT {
             assertTrue(exported.contains("RDM-1"));
             assertTrue(exported.contains(",350,MATCHED,CONFIRMED"));
             assertFalse(exported.contains("RIGHT-1"));
+            assertEquals(2, exported.split("\\r\\n").length);
             assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM qh_operation_log "
                     + "WHERE business_type IN ('SETTLEMENT_BATCH','RECON_BATCH')", Integer.class));
 
@@ -319,6 +323,7 @@ class QingheWp08MatchingPersistenceIT {
                 + "platform_redemption_no,right_code,operation_type,operation_status,occurred_at\r\n";
         String csv = header
                 + row(batch,"QH006","T1","ORDER-1","REDEEM-1","RDM-1","RIGHT-1","REDEEM","SUCCESS","10:00:00")
+                + row(batch,"QH006","T1","ORDER-1","REDEEM-1","RDM-1","RIGHT-1","REDEEM","SUCCESS","10:00:00")
                 + row(batch,"QH001","T2","ORDER-2","REDEEM-2","RDM-2","RIGHT-2","REDEEM","SUCCESS","10:10:00")
                 + row(batch,"QH006","T3","ORDER-3","REDEEM-3","RDM-3","RIGHT-3","REDEEM","SUCCESS","10:20:00")
                 + row(batch,"QH006","T3","ORDER-3","REVERSE-3","RDM-3","RIGHT-3","REVERSE","SUCCESS","10:30:00")
@@ -328,7 +333,7 @@ class QingheWp08MatchingPersistenceIT {
         byte[] csvBytes = csv.getBytes(StandardCharsets.UTF_8);
         String manifest = "{\"provider\":\"MOCK_POS_VENDOR\",\"batchNo\":\"" + batch
                 + "\",\"businessDate\":\"2026-09-08\",\"schemaVersion\":\"1.0\","
-                + "\"fileName\":\"" + fileName + "\",\"rowCount\":7,"
+                + "\"fileName\":\"" + fileName + "\",\"rowCount\":8,"
                 + "\"checksumAlgorithm\":\"SHA-256\",\"checksum\":\"" + sha256(csvBytes)
                 + "\",\"generatedAt\":\"2026-09-09T02:00:05+08:00\","
                 + "\"correctionOfBatchNo\":null}";

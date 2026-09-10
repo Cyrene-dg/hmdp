@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -61,6 +64,31 @@ class ReconciliationFileParserTest {
         assertEquals(QingheErrorCode.RECON_FILE_INVALID, failure.errorCode());
     }
 
+    @Test
+    void shouldDigestTheOriginalCsvRecordInsteadOfNormalizedFields() throws Exception {
+        String batch = "POSB20260908077";
+        String fileName = "POS_20260908_" + batch + ".csv";
+        String rawRow = batch + ",invalid-date,\"QH,006\",T03,ORDER-1,REDEEM-1,"
+                + "RDM-1,RIGHT-1,REDEEM,SUCCESS,2026-09-08T14:52:10+08:00";
+        byte[] csv = ("batch_no,business_date,store_code,terminal_no,pos_order_no,"
+                + "pos_request_no,platform_redemption_no,right_code,operation_type,"
+                + "operation_status,occurred_at\r\n" + rawRow + "\r\n")
+                .getBytes(StandardCharsets.UTF_8);
+        String manifest = "{\"provider\":\"MOCK_POS_VENDOR\",\"batchNo\":\"" + batch
+                + "\",\"businessDate\":\"2026-09-08\",\"schemaVersion\":\"1.0\","
+                + "\"fileName\":\"" + fileName + "\",\"rowCount\":1,"
+                + "\"checksumAlgorithm\":\"SHA-256\",\"checksum\":\"" + sha256(csv)
+                + "\",\"generatedAt\":\"2026-09-09T02:00:05+08:00\","
+                + "\"correctionOfBatchNo\":null}";
+
+        ParsedReconciliationFile parsed = parser.parse(
+                manifest.getBytes(StandardCharsets.UTF_8), fileName, csv);
+
+        assertEquals(1, parsed.issues().size());
+        assertEquals(sha256(rawRow.getBytes(StandardCharsets.UTF_8)),
+                parsed.issues().get(0).rawDigest());
+    }
+
     private ParsedReconciliationFile parse(String folder, String date, String batch) throws Exception {
         String base = "contracts/reconciliation/" + folder + "/POS_" + date + "_" + batch;
         return parser.parse(bytes(base + ".manifest.json"), "POS_" + date + "_" + batch + ".csv",
@@ -76,5 +104,14 @@ class ReconciliationFileParserTest {
             while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
             return output.toByteArray();
         }
+    }
+
+    private static String sha256(byte[] source) throws Exception {
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(source);
+        StringBuilder value = new StringBuilder(64);
+        for (byte item : digest) {
+            value.append(String.format(Locale.ROOT, "%02x", item & 0xff));
+        }
+        return value.toString();
     }
 }
