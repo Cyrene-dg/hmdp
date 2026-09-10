@@ -13,6 +13,8 @@ import com.qinghe.marketing.reconciliation.ReconciliationCompletionTransactionSe
 import com.qinghe.marketing.reconciliation.ReconciliationFileParser;
 import com.qinghe.marketing.reconciliation.ReconciliationImportResult;
 import com.qinghe.marketing.reconciliation.ReconciliationImportService;
+import com.qinghe.marketing.reconciliation.ReconciliationFileOutcome;
+import com.qinghe.marketing.reconciliation.ReconciliationMissingFileService;
 import com.qinghe.marketing.reconciliation.ReconciliationRegistrationTransactionService;
 import com.qinghe.marketing.shared.clock.BusinessClock;
 import com.qinghe.marketing.shared.error.QingheBusinessException;
@@ -98,6 +100,15 @@ class QingheWp08ImportPersistenceIT {
                     new AesGcmRightCodeProtector(""));
 
             Fixture valid = fixture("valid", "20260908", "POSB20260908001");
+            ReconciliationMissingFileService missingFiles=transactional(
+                    new ReconciliationMissingFileService(new ReconciliationFileParser(
+                            new ObjectMapper()),repository,clock,"03:00"),transactions);
+            assertEquals(ReconciliationFileOutcome.MISSING,
+                    missingFiles.observeMissingCsv(valid.manifest));
+            assertEquals(ReconciliationFileOutcome.MISSING,
+                    missingFiles.observeMissingCsv(valid.manifest));
+            assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_file_attempt "
+                    + "WHERE result='MISSING'",Integer.class));
             ReconciliationImportResult imported = service.importFile(
                     valid.manifest, valid.fileName, valid.csv, 1);
             assertEquals(ReconciliationBatchStatus.MATCHING, imported.status());

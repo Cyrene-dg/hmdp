@@ -33,8 +33,11 @@ class ReconciliationFileProcessingServiceTest {
         ReconciliationImportService imports = mock(ReconciliationImportService.class);
         ReconciliationMatchingService matching = mock(ReconciliationMatchingService.class);
         ReconciliationBatchRepository batches = mock(ReconciliationBatchRepository.class);
+        ReconciliationMissingFileService missingFiles=mock(ReconciliationMissingFileService.class);
+        when(missingFiles.observeMissingCsv(any(byte[].class)))
+                .thenReturn(ReconciliationFileOutcome.MISSING);
         ReconciliationFileProcessingService service = new ReconciliationFileProcessingService(
-                files, imports, matching, batches, 2, 3);
+                files, imports, matching, batches, missingFiles, 2, 3);
 
         Path inbound = temporary.resolve("inbound");
         Files.createDirectories(inbound);
@@ -68,8 +71,9 @@ class ReconciliationFileProcessingServiceTest {
         ReconciliationImportService imports = mock(ReconciliationImportService.class);
         ReconciliationMatchingService matching = mock(ReconciliationMatchingService.class);
         ReconciliationBatchRepository batches = mock(ReconciliationBatchRepository.class);
+        ReconciliationMissingFileService missingFiles=mock(ReconciliationMissingFileService.class);
         ReconciliationFileProcessingService service = new ReconciliationFileProcessingService(
-                files, imports, matching, batches, 2, 3);
+                files, imports, matching, batches, missingFiles, 2, 3);
         Path inbound = temporary.resolve("inbound");
         Files.createDirectories(inbound);
 
