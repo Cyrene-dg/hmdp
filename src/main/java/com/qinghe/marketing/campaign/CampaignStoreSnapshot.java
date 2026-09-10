@@ -27,4 +27,10 @@ public final class CampaignStoreSnapshot {
     public long subsidyFen() { return subsidyFen; }
     public String participationStatus() { return participationStatus; }
     public long ruleVersion() { return ruleVersion; }
+
+    /** ACTIVE is retained for records created by early Qinghe fixtures. */
+    public boolean participating() {
+        return "PARTICIPATING".equals(participationStatus)
+                || "ACTIVE".equals(participationStatus);
+    }
 }

@@ -44,7 +44,7 @@ class VoucherOrderTransactionServiceTest {
     @Test
     void persist_shouldReturnAlreadyExistsBeforeDecrementingStock() {
         VoucherOrder order = order();
-        when(voucherOrderMapper.selectCount(any())).thenReturn(1);
+        when(voucherOrderMapper.selectCount(any())).thenReturn(1L);
 
         VoucherOrderTransactionService.PersistResult result = transactionService.persist(order);
 
@@ -56,7 +56,7 @@ class VoucherOrderTransactionServiceTest {
     @Test
     void persist_shouldLetDuplicateKeyEscapeSoTransactionCanRollbackStock() {
         VoucherOrder order = order();
-        when(voucherOrderMapper.selectCount(any())).thenReturn(0);
+        when(voucherOrderMapper.selectCount(any())).thenReturn(0L);
         when(seckillVoucherService.update()).thenReturn(updateChain);
         when(updateChain.setSql(eq("stock = stock - 1"))).thenReturn(updateChain);
         when(updateChain.eq(eq("voucher_id"), eq(order.getVoucherId()))).thenReturn(updateChain);

@@ -165,8 +165,7 @@ public class JdbcRedemptionRepository implements RedemptionRepository {
                 rs.getString("request_digest"), PosRequestStatus.valueOf(rs.getString("status")),
                 rs.getString("redemption_no"), rs.getString("failure_code"),
                 nullableStatus(rs.getString("right_status")), rs.getString("original_redemption_no"),
-                rs.getTimestamp("first_processed_at") == null ? null
-                        : rs.getTimestamp("first_processed_at").toLocalDateTime(),
+                rs.getObject("first_processed_at", LocalDateTime.class),
                 rs.getLong("version"));
     }
 
@@ -175,8 +174,8 @@ public class JdbcRedemptionRepository implements RedemptionRepository {
             BenefitTemplateDraft template = snapshotCodec.decode(rs.getString("template_snapshot"));
             return new PosEntitlementSnapshot(rs.getLong("id"), rs.getString("entitlement_no"),
                     rs.getLong("campaign_id"), EntitlementStatus.valueOf(rs.getString("status")),
-                    rs.getTimestamp("valid_from").toLocalDateTime(),
-                    rs.getTimestamp("valid_until").toLocalDateTime(), rs.getLong("version"),
+                    rs.getObject("valid_from", LocalDateTime.class),
+                    rs.getObject("valid_until", LocalDateTime.class), rs.getLong("version"),
                     template.title(), template.benefitType(), template.productCode(),
                     template.benefitValueFen());
         };

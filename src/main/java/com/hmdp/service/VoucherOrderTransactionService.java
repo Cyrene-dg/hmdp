@@ -49,7 +49,7 @@ public class VoucherOrderTransactionService {
         if (userId == null || voucherId == null) {
             return false;
         }
-        Integer count = voucherOrderMapper.selectCount(new LambdaQueryWrapper<VoucherOrder>()
+        Long count = voucherOrderMapper.selectCount(new LambdaQueryWrapper<VoucherOrder>()
                 .eq(VoucherOrder::getUserId, userId)
                 .eq(VoucherOrder::getVoucherId, voucherId));
         return count != null && count > 0;

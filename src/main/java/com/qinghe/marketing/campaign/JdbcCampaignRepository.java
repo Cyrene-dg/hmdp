@@ -222,12 +222,12 @@ public class JdbcCampaignRepository implements CampaignRepository {
                 new Object[]{campaignId}, (resultSet, rowNum) -> new CampaignPublicationSnapshot(
                         resultSet.getLong("campaign_id"), resultSet.getLong("rule_version"),
                         resultSet.getString("template_snapshot"),
-                        resultSet.getTimestamp("claim_begin_at").toLocalDateTime(),
-                        resultSet.getTimestamp("claim_end_at").toLocalDateTime(),
+                        resultSet.getObject("claim_begin_at", LocalDateTime.class),
+                        resultSet.getObject("claim_end_at", LocalDateTime.class),
                         resultSet.getInt("member_claim_limit"), resultSet.getLong("initial_stock"),
                         nullableLong(resultSet, "franchise_subsidy_fen"),
                         resultSet.getString("published_by"),
-                        resultSet.getTimestamp("published_at").toLocalDateTime()));
+                        resultSet.getObject("published_at", LocalDateTime.class)));
         return rows.stream().findFirst();
     }
 
@@ -273,8 +273,8 @@ public class JdbcCampaignRepository implements CampaignRepository {
                 resultSet.getLong("template_id"), resultSet.getString("name"),
                 resultSet.getString("description"),
                 CampaignStatus.valueOf(resultSet.getString("status")),
-                resultSet.getTimestamp("begin_at").toLocalDateTime(),
-                resultSet.getTimestamp("end_at").toLocalDateTime(),
+                resultSet.getObject("begin_at", LocalDateTime.class),
+                resultSet.getObject("end_at", LocalDateTime.class),
                 resultSet.getInt("member_claim_limit"),
                 nullableLong(resultSet, "franchise_subsidy_fen"),
                 resultSet.getLong("rule_version"), resultSet.getLong("version"),
