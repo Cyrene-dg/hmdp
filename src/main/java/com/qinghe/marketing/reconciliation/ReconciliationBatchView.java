@@ -26,6 +26,7 @@ public final class ReconciliationBatchView {
     private final LocalDateTime completedAt;
     private final List<ReconciliationIssueView> issues;
     private final List<ReconciliationDifferenceView> differences;
+    private final List<ReconciliationAttemptView> attempts;
 
     public ReconciliationBatchView(long id, String reconBatchNo, String provider,
             String providerBatchNo, LocalDate businessDate, String checksum, String fileName,
@@ -33,7 +34,8 @@ public final class ReconciliationBatchView {
             int differenceRows, int directMatchedRows, int franchiseEligibleRows,
             String lastErrorCode, long version, LocalDateTime completedAt,
             List<ReconciliationIssueView> issues,
-            List<ReconciliationDifferenceView> differences) {
+            List<ReconciliationDifferenceView> differences,
+            List<ReconciliationAttemptView> attempts) {
         this.id=id; this.reconBatchNo=reconBatchNo; this.provider=provider;
         this.providerBatchNo=providerBatchNo; this.businessDate=businessDate;
         this.checksum=checksum; this.fileName=fileName; this.status=status;
@@ -45,14 +47,17 @@ public final class ReconciliationBatchView {
         this.issues=issues == null ? Collections.emptyList() : Collections.unmodifiableList(issues);
         this.differences=differences == null ? Collections.emptyList()
                 : Collections.unmodifiableList(differences);
+        this.attempts=attempts == null ? Collections.emptyList()
+                : Collections.unmodifiableList(attempts);
     }
 
     public ReconciliationBatchView withDetails(List<ReconciliationIssueView> issueViews,
-                                               List<ReconciliationDifferenceView> differenceViews) {
+                                               List<ReconciliationDifferenceView> differenceViews,
+                                               List<ReconciliationAttemptView> attemptViews) {
         return new ReconciliationBatchView(id,reconBatchNo,provider,providerBatchNo,businessDate,
                 checksum,fileName,status,totalRows,successRows,errorRows,matchedRows,differenceRows,
                 directMatchedRows,franchiseEligibleRows,lastErrorCode,version,completedAt,
-                issueViews,differenceViews);
+                issueViews,differenceViews,attemptViews);
     }
     public long id() { return id; }
     public String fileName() { return fileName; }
@@ -77,4 +82,5 @@ public final class ReconciliationBatchView {
     public LocalDateTime getCompletedAt() { return completedAt; }
     public List<ReconciliationIssueView> getIssues() { return issues; }
     public List<ReconciliationDifferenceView> getDifferences() { return differences; }
+    public List<ReconciliationAttemptView> getAttempts() { return attempts; }
 }

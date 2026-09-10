@@ -52,7 +52,12 @@ public class JdbcReconciliationAdminRepository implements ReconciliationAdminRep
                         + "WHERE batch_id=? ORDER BY id", new Object[]{batch.id()},
                 (rs,rowNum) -> new ReconciliationDifferenceView(rs.getString("difference_type"),
                         rs.getString("business_key"),rs.getString("detail")));
-        return Optional.of(batch.withDetails(issues,differences));
+        List<ReconciliationAttemptView> attempts=jdbc.query("SELECT checksum,result,received_at "
+                        + "FROM qh_recon_file_attempt WHERE recon_batch_id=? ORDER BY id",
+                new Object[]{batch.id()},(rs,rowNum)->new ReconciliationAttemptView(
+                        rs.getString("checksum"),rs.getString("result"),
+                        rs.getObject("received_at",java.time.LocalDateTime.class)));
+        return Optional.of(batch.withDetails(issues,differences,attempts));
     }
 
     private RowMapper<ReconciliationBatchView> mapper() {
@@ -64,7 +69,7 @@ public class JdbcReconciliationAdminRepository implements ReconciliationAdminRep
                 rs.getInt("difference_rows"),rs.getInt("direct_matched_rows"),
                 rs.getInt("franchise_eligible_rows"),rs.getString("last_error_code"),
                 rs.getLong("version"),
-                rs.getObject("completed_at",java.time.LocalDateTime.class),null,null);
+                rs.getObject("completed_at",java.time.LocalDateTime.class),null,null,null);
     }
 
     private static Filter filter(LocalDate businessDate, ReconciliationBatchStatus status) {

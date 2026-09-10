@@ -6,5 +6,6 @@ public enum ReconciliationBatchStatus {
     MATCHING,
     COMPLETED,
     PARTIAL_FAILED,
-    CONFLICT
+    CONFLICT,
+    MISSING
 }
