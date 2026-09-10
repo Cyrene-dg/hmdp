@@ -77,7 +77,7 @@ class QingheWp08ImportPersistenceIT {
                             + "'RECEIVED',0,0,NOW(3),NOW(3))");
                 }
                 executeScript(connection, migration(8));
-                assertEquals(32, tableCount(connection));
+                assertEquals(33, tableCount(connection));
                 try (Statement statement = connection.createStatement();
                      ResultSet rows = statement.executeQuery("SELECT recon_batch_no, file_name, "
                              + "schema_version FROM qh_recon_batch WHERE batch_no='LEGACY-BATCH-1'")) {
