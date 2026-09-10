@@ -45,6 +45,11 @@ logging:
 auth:
   mode: hybrid
 
+legacy:
+  hmdp:
+    # 青禾运行边界默认不注册旧点评接口；仅在回看历史功能时显式开启。
+    endpoints-enabled: ${LEGACY_HMDP_ENDPOINTS_ENABLED:false}
+
 qinghe:
   pos:
     allowed-clock-skew-seconds: ${QINGHE_POS_CLOCK_SKEW_SECONDS:300}

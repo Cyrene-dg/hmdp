@@ -5,6 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.utils.SystemConstants;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,6 +16,7 @@ import java.util.UUID;
 @Slf4j
 @RestController
 @RequestMapping("upload")
+@ConditionalOnProperty(name = "legacy.hmdp.endpoints-enabled", havingValue = "true")
 public class UploadController {
 
     @PostMapping("blog")

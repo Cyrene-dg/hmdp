@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @SpringBootTest(properties = {
+        "legacy.hmdp.endpoints-enabled=true",
         "spring.rabbitmq.listener.simple.auto-startup=false"
 })
 @AutoConfigureMockMvc
