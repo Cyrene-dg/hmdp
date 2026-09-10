@@ -21,7 +21,7 @@ public class CampaignStorePolicy {
         return campaignRepository.findStores(campaignId).stream()
                 .filter(snapshot -> snapshot.storeId() == store.storeId())
                 .filter(snapshot -> snapshot.storeCode().equals(store.storeCode()))
-                .filter(snapshot -> "ACTIVE".equals(snapshot.participationStatus()))
+                .filter(CampaignStoreSnapshot::participating)
                 .findFirst()
                 .orElseThrow(() -> new QingheBusinessException(
                         QingheErrorCode.STORE_NOT_APPLICABLE,

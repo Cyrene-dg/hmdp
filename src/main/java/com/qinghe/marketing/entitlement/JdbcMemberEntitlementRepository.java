@@ -23,7 +23,8 @@ public class JdbcMemberEntitlementRepository implements MemberEntitlementReposit
             + "e.valid_from, e.valid_until, e.version, e.created_at, e.updated_at";
     private static final String VIEW_COLUMNS = BASE_COLUMNS + ", CAST(p.template_snapshot AS CHAR) "
             + "AS template_snapshot, (SELECT COUNT(*) FROM qh_campaign_store cs "
-            + "WHERE cs.campaign_id = e.campaign_id AND cs.participation_status = 'ACTIVE') AS store_count";
+            + "WHERE cs.campaign_id = e.campaign_id "
+            + "AND cs.participation_status IN ('PARTICIPATING', 'ACTIVE')) AS store_count";
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
