@@ -19,6 +19,10 @@ import com.qinghe.marketing.reconciliation.ReconciliationMatchingRepository;
 import com.qinghe.marketing.reconciliation.ReconciliationMatchingService;
 import com.qinghe.marketing.reconciliation.ReconciliationMatchingTransactionService;
 import com.qinghe.marketing.reconciliation.ReconciliationRegistrationTransactionService;
+import com.qinghe.marketing.reconciliation.JdbcReconciliationAdminRepository;
+import com.qinghe.marketing.reconciliation.ReconciliationAdminQueryService;
+import com.qinghe.marketing.reconciliation.ReconciliationBatchView;
+import com.qinghe.marketing.reconciliation.ReconciliationPage;
 import com.qinghe.marketing.operations.JdbcOperationAuditRecorder;
 import com.qinghe.marketing.shared.clock.BusinessClock;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
@@ -34,6 +38,10 @@ import com.qinghe.marketing.settlement.SettlementGenerationOutcome;
 import com.qinghe.marketing.settlement.SettlementGenerationResult;
 import com.qinghe.marketing.settlement.SettlementGenerationService;
 import com.qinghe.marketing.settlement.SettlementRepository;
+import com.qinghe.marketing.settlement.JdbcSettlementAdminRepository;
+import com.qinghe.marketing.settlement.SettlementAdminQueryService;
+import com.qinghe.marketing.settlement.SettlementBatchView;
+import com.qinghe.marketing.settlement.SettlementPage;
 import com.qinghe.marketing.shared.error.QingheBusinessException;
 import com.qinghe.marketing.shared.error.QingheErrorCode;
 import org.junit.jupiter.api.Test;
@@ -210,10 +218,33 @@ class QingheWp08MatchingPersistenceIT {
                     "QH_SETTLEMENT_" + generated.batch().batchNo() + "_"));
             assertTrue(exported.contains("RDM-1"));
             assertTrue(exported.contains(",350,MATCHED,CONFIRMED"));
+            assertTrue(exported.contains("QH006,加盟店,RDM-1,REDEEM-1,ORDER-1"));
+            assertTrue(exported.contains("2026-09-09T10:00+08:00"), exported);
             assertFalse(exported.contains("RIGHT-1"));
             assertEquals(2, exported.split("\\r\\n").length);
             assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM qh_operation_log "
                     + "WHERE business_type IN ('SETTLEMENT_BATCH','RECON_BATCH')", Integer.class));
+
+            ReconciliationAdminQueryService reconQueries = new ReconciliationAdminQueryService(
+                    new JdbcReconciliationAdminRepository(jdbc));
+            ReconciliationPage reconPage = reconQueries.list(
+                    java.time.LocalDate.of(2026, 9, 8), ReconciliationBatchStatus.COMPLETED, 1, 20);
+            assertEquals(1, reconPage.getTotal());
+            ReconciliationBatchView reconDetail = reconQueries.require(imported.reconBatchNo());
+            assertEquals(5, reconDetail.getDifferenceRows());
+            assertEquals(5, reconDetail.getDifferences().size());
+            assertEquals(1, reconDetail.getFranchiseEligibleRows());
+
+            SettlementAdminQueryService settlementQueries = new SettlementAdminQueryService(
+                    new JdbcSettlementAdminRepository(jdbc));
+            SettlementPage settlementPage = settlementQueries.list(
+                    SettlementBatchStatus.CONFIRMED, 1, 20);
+            assertEquals(1, settlementPage.getTotal());
+            SettlementBatchView settlementDetail = settlementQueries.require(
+                    generated.batch().batchNo());
+            assertEquals(1, settlementDetail.getDetails().size());
+            assertEquals(350, settlementDetail.getTotalSubsidyFen());
+            assertEquals("QH006", settlementDetail.getDetails().get(0).getStoreCode());
 
             FilePair empty = emptyFile();
             ReconciliationImportResult emptyImport = importer.importFile(
