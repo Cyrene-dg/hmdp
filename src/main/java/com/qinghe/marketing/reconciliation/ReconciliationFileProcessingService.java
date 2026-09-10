@@ -17,18 +17,19 @@ public class ReconciliationFileProcessingService {
     private final ReconciliationImportService imports;
     private final ReconciliationMatchingService matching;
     private final ReconciliationBatchRepository batches;
+    private final ReconciliationMissingFileService missingFiles;
     private final int importChunkSize;
     private final int matchChunkSize;
 
     public ReconciliationFileProcessingService(LocalReconciliationFileGateway files,
             ReconciliationImportService imports, ReconciliationMatchingService matching,
-            ReconciliationBatchRepository batches,
+            ReconciliationBatchRepository batches,ReconciliationMissingFileService missingFiles,
             @Value("${qinghe.reconciliation.import-chunk-size:500}") int importChunkSize,
             @Value("${qinghe.reconciliation.match-chunk-size:200}") int matchChunkSize) {
         this.files = files;
         this.imports = imports;
         this.matching = matching;
-        this.batches = batches;
+        this.batches = batches; this.missingFiles=missingFiles;
         this.importChunkSize = importChunkSize;
         this.matchChunkSize = matchChunkSize;
     }
@@ -41,9 +42,12 @@ public class ReconciliationFileProcessingService {
             for (Path manifest : files.discoverManifests()) {
                 Path csv = files.pairedCsv(manifest);
                 if (!Files.isRegularFile(csv)) {
+                    ReconciliationFileOutcome outcome=missingFiles.observeMissingCsv(
+                            files.read(manifest));
                     results.add(new ReconciliationFileProcessingResult(
                             manifest.getFileName().toString(), null,
-                            ReconciliationFileOutcome.MISSING, "CSV_PAIR_MISSING"));
+                            outcome,outcome==ReconciliationFileOutcome.MISSING
+                                    ? "CSV_PAIR_MISSING" : null));
                     continue;
                 }
                 results.add(process(files.stage(manifest)));

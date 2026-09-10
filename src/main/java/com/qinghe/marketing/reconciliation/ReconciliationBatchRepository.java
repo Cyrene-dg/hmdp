@@ -14,6 +14,8 @@ public interface ReconciliationBatchRepository {
     Optional<ReconciliationBatch> findByIdForUpdate(long batchId);
     void recordAttempt(String provider, String providerBatchNo, String checksum, String result,
                        Long batchId, LocalDateTime now);
+    boolean recordMissingAttemptIfAbsent(String provider, String providerBatchNo,
+                                         String checksum, LocalDateTime now);
     boolean correctionSourceExists(String provider, String providerBatchNo);
     void createChunksIfAbsent(long batchId, int totalRows, int chunkSize, LocalDateTime now);
     List<ReconciliationImportChunk> findIncompleteChunks(long batchId);

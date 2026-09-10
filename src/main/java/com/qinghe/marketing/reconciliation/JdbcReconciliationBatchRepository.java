@@ -69,6 +69,17 @@ public class JdbcReconciliationBatchRepository implements ReconciliationBatchRep
     }
 
     @Override
+    public boolean recordMissingAttemptIfAbsent(String provider, String providerBatchNo,
+                                                String checksum, LocalDateTime now) {
+        Integer existing = jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_file_attempt "
+                        + "WHERE provider=? AND provider_batch_no=? AND checksum=? AND result='MISSING'",
+                new Object[]{provider,providerBatchNo,checksum},Integer.class);
+        if (existing != null && existing > 0) return false;
+        recordAttempt(provider,providerBatchNo,checksum,"MISSING",null,now);
+        return true;
+    }
+
+    @Override
     public boolean correctionSourceExists(String provider, String providerBatchNo) {
         Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_batch "
                         + "WHERE provider = ? AND batch_no = ?",

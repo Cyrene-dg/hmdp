@@ -5,6 +5,7 @@ public enum ReconciliationFileOutcome {
     DUPLICATE,
     PARTIAL_FAILED,
     CONFLICT,
+    WAITING_FOR_PAIR,
     MISSING,
     FAILED
 }

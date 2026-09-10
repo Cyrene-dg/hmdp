@@ -35,7 +35,7 @@ public class ReconciliationFileParser {
 
     public ParsedReconciliationFile parse(byte[] manifestBytes, String actualFileName,
                                           byte[] csvBytes) {
-        ReconciliationManifest manifest = manifest(manifestBytes);
+        ReconciliationManifest manifest = parseManifest(manifestBytes);
         require(manifest.fileName().equals(actualFileName), "manifest fileName does not match");
         String expectedFileName = "POS_" + manifest.businessDate().toString().replace("-", "")
                 + "_" + manifest.batchNo() + ".csv";
@@ -62,7 +62,7 @@ public class ReconciliationFileParser {
         return new ParsedReconciliationFile(manifest, valid, issues);
     }
 
-    private ReconciliationManifest manifest(byte[] bytes) {
+    public ReconciliationManifest parseManifest(byte[] bytes) {
         try {
             JsonNode root = mapper.readTree(bytes);
             require(root != null && root.isObject(), "manifest must be an object");
