@@ -3,6 +3,8 @@ package com.qinghe.marketing.settlement;
 import com.qinghe.marketing.reconciliation.ReconciliationBatch;
 import com.qinghe.marketing.reconciliation.ReconciliationBatchStatus;
 import com.qinghe.marketing.shared.clock.BusinessClock;
+import com.qinghe.marketing.shared.audit.OperationAudit;
+import com.qinghe.marketing.shared.audit.OperationAuditRecorder;
 import com.qinghe.marketing.shared.error.QingheBusinessException;
 import com.qinghe.marketing.shared.error.QingheErrorCode;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
@@ -18,10 +20,12 @@ public class SettlementGenerationService {
     private final SettlementRepository repository;
     private final BusinessIdGenerator ids;
     private final BusinessClock clock;
+    private final OperationAuditRecorder audits;
 
     public SettlementGenerationService(SettlementRepository repository,
-                                       BusinessIdGenerator ids, BusinessClock clock) {
-        this.repository = repository; this.ids = ids; this.clock = clock;
+                                       BusinessIdGenerator ids, BusinessClock clock,
+                                       OperationAuditRecorder audits) {
+        this.repository = repository; this.ids = ids; this.clock = clock; this.audits = audits;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -35,10 +39,9 @@ public class SettlementGenerationService {
         Optional<SettlementBatch> selected = repository.findByReconBatchIdForUpdate(recon.id());
         if (selected.isPresent() && selected.get().status() != SettlementBatchStatus.DRAFT) {
             SettlementBatch existing = selected.get();
-            repository.insertAudit(command.operatorId(), "SETTLEMENT_GENERATE_REPLAY",
+            audit(command, "SETTLEMENT_GENERATE_REPLAY",
                     "SETTLEMENT_BATCH", existing.batchNo(), existing.status().name(),
-                    existing.status().name(), command.comment(), "IDEMPOTENT",
-                    command.requestId(), clock.dateTime());
+                    existing.status().name(), "IDEMPOTENT");
             return new SettlementGenerationResult(SettlementGenerationOutcome.ALREADY_EXISTS,
                     reconBatchNo, existing);
         }
@@ -56,30 +59,36 @@ public class SettlementGenerationService {
         SettlementTotals totals = repository.lockEligibleDetails(recon.id(),
                 existingDraft == null ? null : existingDraft.id());
         if (totals.detailCount() == 0) {
-            repository.insertAudit(command.operatorId(), "SETTLEMENT_GENERATE",
+            audit(command, "SETTLEMENT_GENERATE",
                     "RECON_BATCH", reconBatchNo, recon.status().name(), recon.status().name(),
-                    command.comment(), "NO_SETTLEMENT_REQUIRED", command.requestId(), now);
+                    "NO_SETTLEMENT_REQUIRED");
             return new SettlementGenerationResult(
                     SettlementGenerationOutcome.NO_SETTLEMENT_REQUIRED, reconBatchNo,
                     existingDraft);
         }
         if (existingDraft != null) {
             SettlementBatch rebuilt = repository.rebuildBatch(existingDraft, totals, now);
-            repository.insertAudit(command.operatorId(), "SETTLEMENT_REBUILD",
+            audit(command, "SETTLEMENT_REBUILD",
                     "SETTLEMENT_BATCH", rebuilt.batchNo(), SettlementBatchStatus.DRAFT.name(),
-                    rebuilt.status().name(), command.comment(), "SUCCESS",
-                    command.requestId(), now);
+                    rebuilt.status().name(), "SUCCESS");
             return new SettlementGenerationResult(SettlementGenerationOutcome.REBUILT,
                     reconBatchNo, rebuilt);
         }
         SettlementBatch created = repository.insertBatch(
                 ids.next(BusinessIdType.SETTLEMENT_BATCH), recon, totals, now);
         repository.attachDetails(created.id(), totals.detailIds(), now);
-        repository.insertAudit(command.operatorId(), "SETTLEMENT_GENERATE",
+        audit(command, "SETTLEMENT_GENERATE",
                 "SETTLEMENT_BATCH", created.batchNo(), null, created.status().name(),
-                command.comment(), "SUCCESS", command.requestId(), now);
+                "SUCCESS");
         return new SettlementGenerationResult(SettlementGenerationOutcome.CREATED,
                 reconBatchNo, created);
+    }
+
+    private void audit(SettlementGenerateCommand command, String action, String businessType,
+                       String businessId, String before, String after, String result) {
+        audits.record(new OperationAudit("ADMIN", command.operatorId(), action, businessType,
+                businessId, before, after, command.comment(), result, command.requestId(),
+                command.requestId(), clock.instant()));
     }
 
     private static void validate(String reconBatchNo, SettlementGenerateCommand command) {

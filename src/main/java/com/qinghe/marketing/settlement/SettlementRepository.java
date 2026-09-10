@@ -22,7 +22,4 @@ public interface SettlementRepository {
     void confirmBatch(long settlementBatchId, long expectedVersion, String operatorId,
                       LocalDateTime now);
     List<SettlementExportRow> exportRows(long settlementBatchId);
-    void insertAudit(String operatorId, String action, String businessType, String businessId,
-                     String beforeState, String afterState, String reason, String result,
-                     String requestId, LocalDateTime now);
 }

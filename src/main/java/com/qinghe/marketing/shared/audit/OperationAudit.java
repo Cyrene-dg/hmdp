@@ -15,6 +15,7 @@ public final class OperationAudit {
     private final String afterState;
     private final String reason;
     private final String result;
+    private final String requestId;
     private final String traceId;
     private final Instant occurredAt;
 
@@ -22,6 +23,14 @@ public final class OperationAudit {
                           String businessType, String businessId, String beforeState,
                           String afterState, String reason, String result,
                           String traceId, Instant occurredAt) {
+        this(operatorType, operatorId, action, businessType, businessId, beforeState,
+                afterState, reason, result, null, traceId, occurredAt);
+    }
+
+    public OperationAudit(String operatorType, String operatorId, String action,
+                          String businessType, String businessId, String beforeState,
+                          String afterState, String reason, String result,
+                          String requestId, String traceId, Instant occurredAt) {
         this.operatorType = required(operatorType, "operatorType");
         this.operatorId = required(operatorId, "operatorId");
         this.action = required(action, "action");
@@ -31,6 +40,7 @@ public final class OperationAudit {
         this.afterState = afterState;
         this.reason = reason;
         this.result = required(result, "result");
+        this.requestId = requestId;
         this.traceId = required(traceId, "traceId");
         this.occurredAt = Objects.requireNonNull(occurredAt, "occurredAt");
     }
@@ -51,6 +61,7 @@ public final class OperationAudit {
     public String afterState() { return afterState; }
     public String reason() { return reason; }
     public String result() { return result; }
+    public String requestId() { return requestId; }
     public String traceId() { return traceId; }
     public Instant occurredAt() { return occurredAt; }
 }

@@ -19,6 +19,7 @@ import com.qinghe.marketing.reconciliation.ReconciliationMatchingRepository;
 import com.qinghe.marketing.reconciliation.ReconciliationMatchingService;
 import com.qinghe.marketing.reconciliation.ReconciliationMatchingTransactionService;
 import com.qinghe.marketing.reconciliation.ReconciliationRegistrationTransactionService;
+import com.qinghe.marketing.operations.JdbcOperationAuditRecorder;
 import com.qinghe.marketing.shared.clock.BusinessClock;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
 import com.qinghe.marketing.settlement.JdbcSettlementRepository;
@@ -156,9 +157,10 @@ class QingheWp08MatchingPersistenceIT {
                     "SELECT COUNT(*) FROM qh_settlement_detail", Integer.class));
 
             SettlementRepository settlementRepository = new JdbcSettlementRepository(jdbc);
+            JdbcOperationAuditRecorder auditRecorder = new JdbcOperationAuditRecorder(jdbc);
             SettlementGenerationService generation = transactional(
                     new SettlementGenerationService(settlementRepository,
-                            new BusinessIdGenerator(clock), clock), transactionManager);
+                            new BusinessIdGenerator(clock), clock, auditRecorder), transactionManager);
             long reconVersion = jdbc.queryForObject("SELECT version FROM qh_recon_batch "
                     + "WHERE batch_no='POSB20260908099'", Long.class);
             SettlementGenerationResult generated = generation.generate(imported.reconBatchNo(),
@@ -179,7 +181,7 @@ class QingheWp08MatchingPersistenceIT {
             assertEquals(generated.batch().batchNo(), generationReplay.batch().batchNo());
 
             SettlementConfirmationService confirmation = transactional(
-                    new SettlementConfirmationService(settlementRepository, clock),
+                    new SettlementConfirmationService(settlementRepository, clock, auditRecorder),
                     transactionManager);
             QingheBusinessException changed = assertThrows(QingheBusinessException.class,
                     () -> confirmation.confirm(generated.batch().batchNo(),
@@ -200,7 +202,7 @@ class QingheWp08MatchingPersistenceIT {
                     + "WHERE status='CONFIRMED'", Integer.class));
 
             SettlementExportService exportService = transactional(
-                    new SettlementExportService(settlementRepository, clock), transactionManager);
+                    new SettlementExportService(settlementRepository, clock, auditRecorder), transactionManager);
             SettlementExport export = exportService.export(generated.batch().batchNo(),
                     "FIN-008", "settlement-export-001");
             String exported = new String(export.content(), StandardCharsets.UTF_8);

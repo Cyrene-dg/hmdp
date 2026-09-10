@@ -1,6 +1,8 @@
 package com.qinghe.marketing.settlement;
 
 import com.qinghe.marketing.shared.clock.BusinessClock;
+import com.qinghe.marketing.shared.audit.OperationAudit;
+import com.qinghe.marketing.shared.audit.OperationAuditRecorder;
 import com.qinghe.marketing.shared.error.QingheBusinessException;
 import com.qinghe.marketing.shared.error.QingheErrorCode;
 import org.springframework.stereotype.Service;
@@ -17,9 +19,11 @@ public class SettlementExportService {
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final SettlementRepository repository;
     private final BusinessClock clock;
+    private final OperationAuditRecorder audits;
 
-    public SettlementExportService(SettlementRepository repository, BusinessClock clock) {
-        this.repository = repository; this.clock = clock;
+    public SettlementExportService(SettlementRepository repository, BusinessClock clock,
+                                   OperationAuditRecorder audits) {
+        this.repository = repository; this.clock = clock; this.audits = audits;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -44,10 +48,10 @@ public class SettlementExportService {
                     row.confirmationStatus());
         }
         LocalDateTime now = clock.dateTime();
-        repository.insertAudit(operatorId, "SETTLEMENT_EXPORT", "SETTLEMENT_BATCH",
-                batch.batchNo(), batch.status().name(), batch.status().name(),
+        audits.record(new OperationAudit("ADMIN", operatorId, "SETTLEMENT_EXPORT",
+                "SETTLEMENT_BATCH", batch.batchNo(), batch.status().name(), batch.status().name(),
                 "export review details; confirmation does not mean payment", "SUCCESS",
-                requestId, now);
+                requestId, requestId, clock.instant()));
         return new SettlementExport("QH_SETTLEMENT_" + batch.batchNo() + "_"
                 + FILE_TIME.format(now) + ".csv",
                 csv.toString().getBytes(StandardCharsets.UTF_8));

@@ -1,6 +1,8 @@
 package com.qinghe.marketing.settlement;
 
 import com.qinghe.marketing.shared.clock.BusinessClock;
+import com.qinghe.marketing.shared.audit.OperationAudit;
+import com.qinghe.marketing.shared.audit.OperationAuditRecorder;
 import com.qinghe.marketing.shared.error.QingheBusinessException;
 import com.qinghe.marketing.shared.error.QingheErrorCode;
 import org.springframework.stereotype.Service;
@@ -12,9 +14,11 @@ import java.time.LocalDateTime;
 public class SettlementConfirmationService {
     private final SettlementRepository repository;
     private final BusinessClock clock;
+    private final OperationAuditRecorder audits;
 
-    public SettlementConfirmationService(SettlementRepository repository, BusinessClock clock) {
-        this.repository = repository; this.clock = clock;
+    public SettlementConfirmationService(SettlementRepository repository, BusinessClock clock,
+                                         OperationAuditRecorder audits) {
+        this.repository = repository; this.clock = clock; this.audits = audits;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -25,10 +29,9 @@ public class SettlementConfirmationService {
                         QingheErrorCode.RESOURCE_NOT_FOUND,
                         "settlement batch does not exist"));
         if (batch.status() == SettlementBatchStatus.CONFIRMED) {
-            repository.insertAudit(command.operatorId(), "SETTLEMENT_CONFIRM_REPLAY",
+            audit(command, "SETTLEMENT_CONFIRM_REPLAY",
                     "SETTLEMENT_BATCH", batch.batchNo(), batch.status().name(),
-                    batch.status().name(), command.comment(), "IDEMPOTENT",
-                    command.requestId(), clock.dateTime());
+                    batch.status().name(), "IDEMPOTENT");
             return batch;
         }
         if (batch.status() != SettlementBatchStatus.PENDING_CONFIRM
@@ -47,11 +50,17 @@ public class SettlementConfirmationService {
         SettlementBatch confirmed = repository.findByBatchNoForUpdate(settlementBatchNo)
                 .orElseThrow(() -> new IllegalStateException(
                         "confirmed settlement batch cannot be reloaded"));
-        repository.insertAudit(command.operatorId(), "SETTLEMENT_CONFIRM",
+        audit(command, "SETTLEMENT_CONFIRM",
                 "SETTLEMENT_BATCH", batch.batchNo(), batch.status().name(),
-                confirmed.status().name(), command.comment(), "SUCCESS",
-                command.requestId(), now);
+                confirmed.status().name(), "SUCCESS");
         return confirmed;
+    }
+
+    private void audit(SettlementConfirmCommand command, String action, String businessType,
+                       String businessId, String before, String after, String result) {
+        audits.record(new OperationAudit("ADMIN", command.operatorId(), action, businessType,
+                businessId, before, after, command.comment(), result, command.requestId(),
+                command.requestId(), clock.instant()));
     }
 
     private static QingheBusinessException changed() {

@@ -202,17 +202,6 @@ public class JdbcSettlementRepository implements SettlementRepository {
                         rs.getString("status")));
     }
 
-    @Override
-    public void insertAudit(String operatorId, String action, String businessType,
-                            String businessId, String beforeState, String afterState,
-                            String reason, String result, String requestId, LocalDateTime now) {
-        jdbc.update("INSERT INTO qh_operation_log (operator_type,operator_id,action,business_type,"
-                        + "business_id,before_state,after_state,reason,result,request_id,trace_id,"
-                        + "created_at) VALUES ('ADMIN',?,?,?,?,?,?,?,?,?,?,?)", operatorId, action,
-                businessType, businessId, beforeState, afterState, reason, result,
-                requestId, requestId, now);
-    }
-
     private org.springframework.jdbc.core.RowMapper<SettlementBatch> batchMapper() {
         return (rs, rowNum) -> new SettlementBatch(rs.getLong("id"), rs.getString("batch_no"),
                 rs.getLong("recon_batch_id"), rs.getString("recon_batch_no"),
