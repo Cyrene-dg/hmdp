@@ -42,6 +42,12 @@ public class JdbcReconciliationBatchRepository implements ReconciliationBatchRep
     }
 
     @Override
+    public Optional<ReconciliationBatch> findByReconBatchNo(String reconBatchNo) {
+        return first(jdbc.query(BATCH_SELECT + " WHERE recon_batch_no = ?",
+                new Object[]{reconBatchNo}, batchMapper()));
+    }
+
+    @Override
     public Optional<ReconciliationBatch> findByProviderBatchForUpdate(String provider,
                                                                        String providerBatchNo) {
         return first(jdbc.query(BATCH_SELECT + " WHERE provider = ? AND batch_no = ? FOR UPDATE",

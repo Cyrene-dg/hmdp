@@ -8,6 +8,7 @@ public interface ReconciliationBatchRepository {
     boolean insertBatchIfAbsent(String reconBatchNo, ReconciliationManifest manifest,
                                 LocalDateTime now);
     Optional<ReconciliationBatch> findByProviderBatch(String provider, String providerBatchNo);
+    Optional<ReconciliationBatch> findByReconBatchNo(String reconBatchNo);
     Optional<ReconciliationBatch> findByProviderBatchForUpdate(String provider,
                                                                String providerBatchNo);
     Optional<ReconciliationBatch> findByIdForUpdate(long batchId);

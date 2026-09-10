@@ -88,3 +88,10 @@ qinghe:
     expiry:
       enabled: ${QINGHE_ENTITLEMENT_EXPIRY_ENABLED:false}
       scan-delay-ms: ${QINGHE_ENTITLEMENT_EXPIRY_SCAN_DELAY_MS:60000}
+  reconciliation:
+    import-chunk-size: ${QINGHE_RECON_IMPORT_CHUNK_SIZE:500}
+    match-chunk-size: ${QINGHE_RECON_MATCH_CHUNK_SIZE:200}
+    file:
+      base-directory: ${QINGHE_RECON_BASE_DIR:}
+      scheduler-enabled: ${QINGHE_RECON_FILE_SCHEDULER_ENABLED:false}
+      scan-delay-ms: ${QINGHE_RECON_FILE_SCAN_DELAY_MS:60000}
