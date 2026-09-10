@@ -182,8 +182,9 @@ public class JdbcSettlementRepository implements SettlementRepository {
 
     @Override
     public List<SettlementExportRow> exportRows(long settlementBatchId) {
-        return jdbc.query("SELECT DISTINCT b.batch_no,b.business_date,camp.campaign_no,s.external_store_code,"
-                        + "r.redemption_no,r.pos_request_no,d.subsidy_fen,rr.match_status,d.status "
+        return jdbc.query("SELECT DISTINCT b.batch_no,b.business_date,camp.campaign_no,"
+                        + "s.external_store_code,s.name,r.redemption_no,r.pos_request_no,"
+                        + "r.pos_order_no,d.subsidy_fen,rr.match_status,d.status,d.confirmed_at "
                         + "FROM qh_settlement_detail d "
                         + "JOIN qh_settlement_batch b ON b.id=d.settlement_batch_id "
                         + "JOIN qh_subsidy_candidate c ON c.id=d.candidate_id "
@@ -197,9 +198,11 @@ public class JdbcSettlementRepository implements SettlementRepository {
                 new Object[]{settlementBatchId}, (rs, rowNum) -> new SettlementExportRow(
                         rs.getString("batch_no"), rs.getDate("business_date").toLocalDate(),
                         rs.getString("campaign_no"), rs.getString("external_store_code"),
-                        rs.getString("redemption_no"), rs.getString("pos_request_no"),
+                        rs.getString("name"), rs.getString("redemption_no"),
+                        rs.getString("pos_request_no"), rs.getString("pos_order_no"),
                         rs.getLong("subsidy_fen"), rs.getString("match_status"),
-                        rs.getString("status")));
+                        rs.getString("status"),
+                        rs.getObject("confirmed_at", LocalDateTime.class)));
     }
 
     private org.springframework.jdbc.core.RowMapper<SettlementBatch> batchMapper() {
@@ -209,8 +212,7 @@ public class JdbcSettlementRepository implements SettlementRepository {
                 SettlementBatchStatus.valueOf(rs.getString("status")),
                 rs.getInt("detail_count"), rs.getInt("store_count"), rs.getLong("total_fen"),
                 rs.getLong("version"), rs.getString("confirmed_by"),
-                rs.getTimestamp("confirmed_at") == null ? null
-                        : rs.getTimestamp("confirmed_at").toLocalDateTime());
+                rs.getObject("confirmed_at", LocalDateTime.class));
     }
 
     private static SettlementTotals totals(List<EligibleRow> rows) {

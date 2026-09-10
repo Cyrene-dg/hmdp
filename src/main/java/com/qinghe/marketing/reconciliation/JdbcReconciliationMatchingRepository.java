@@ -63,7 +63,7 @@ public class JdbcReconciliationMatchingRepository implements ReconciliationMatch
                         rs.getString("pos_order_no"), rs.getString("pos_request_no"),
                         rs.getString("redemption_no"), rs.getString("right_code_hash"),
                         rs.getString("operation_type"), rs.getString("operation_status"),
-                        rs.getTimestamp("occurred_at").toLocalDateTime()));
+                        rs.getObject("occurred_at", LocalDateTime.class)));
     }
 
     @Override
@@ -267,8 +267,7 @@ public class JdbcReconciliationMatchingRepository implements ReconciliationMatch
                 rs.getString("store_code"), rs.getString("terminal_no"),
                 rs.getString("right_code_hash"), rs.getString("operation_status"),
                 rs.getString("redemption_status"),
-                rs.getTimestamp("occurred_at") == null ? null
-                        : rs.getTimestamp("occurred_at").toLocalDateTime(),
+                rs.getObject("occurred_at", LocalDateTime.class),
                 StoreOwnershipType.valueOf(rs.getString("ownership_type")),
                 (Long) rs.getObject("candidate_id"), (Long) rs.getObject("subsidy_fen"),
                 rs.getString("candidate_status"));

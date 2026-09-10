@@ -39,13 +39,14 @@ public class SettlementExportService {
                         "settlement batch does not exist"));
         List<SettlementExportRow> rows = repository.exportRows(batch.id());
         StringBuilder csv = new StringBuilder("settlement_batch_no,business_date,campaign_no,"
-                + "store_code,redemption_no,pos_request_no,subsidy_fen,reconciliation_status,"
-                + "confirmation_status\r\n");
+                + "store_code,store_name,redemption_no,pos_request_no,pos_order_no,subsidy_fen,"
+                + "recon_status,confirmation_status,confirmed_at\r\n");
         for (SettlementExportRow row : rows) {
             append(csv, row.settlementBatchNo(), row.businessDate().toString(), row.campaignNo(),
-                    row.storeCode(), row.redemptionNo(), row.posRequestNo(),
+                    row.storeCode(), row.storeName(), row.redemptionNo(), row.posRequestNo(),
+                    row.posOrderNo(),
                     String.valueOf(row.subsidyFen()), row.reconciliationStatus(),
-                    row.confirmationStatus());
+                    row.confirmationStatus(), dateTime(row.confirmedAt()));
         }
         LocalDateTime now = clock.dateTime();
         audits.record(new OperationAudit("ADMIN", operatorId, "SETTLEMENT_EXPORT",
@@ -55,6 +56,10 @@ public class SettlementExportService {
         return new SettlementExport("QH_SETTLEMENT_" + batch.batchNo() + "_"
                 + FILE_TIME.format(now) + ".csv",
                 csv.toString().getBytes(StandardCharsets.UTF_8));
+    }
+    private static String dateTime(LocalDateTime value) {
+        return value == null ? "" : value.atZone(BusinessClock.BUSINESS_ZONE)
+                .toOffsetDateTime().toString();
     }
 
     private static void append(StringBuilder output, String... values) {
