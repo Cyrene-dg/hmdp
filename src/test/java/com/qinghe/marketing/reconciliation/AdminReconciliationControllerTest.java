@@ -69,6 +69,6 @@ class AdminReconciliationControllerTest {
     private static ReconciliationBatchView view(String status,long version) {
         return new ReconciliationBatchView(88,"REC202609090088","MOCK_POS",
                 "POSB20260908088",null,"checksum","POS_20260908_POSB20260908088.csv",
-                status,1,1,0,1,0,0,1,null,version,null,null,null);
+                status,1,1,0,1,0,0,1,null,version,null,null,null,null);
     }
 }

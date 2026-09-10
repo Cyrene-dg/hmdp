@@ -234,6 +234,7 @@ class QingheWp08MatchingPersistenceIT {
             assertEquals(5, reconDetail.getDifferenceRows());
             assertEquals(5, reconDetail.getDifferences().size());
             assertEquals(1, reconDetail.getFranchiseEligibleRows());
+            assertEquals(1, reconDetail.getAttempts().size());
 
             SettlementAdminQueryService settlementQueries = new SettlementAdminQueryService(
                     new JdbcSettlementAdminRepository(jdbc));
