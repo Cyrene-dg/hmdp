@@ -8,11 +8,11 @@
         <version>2.3.12.RELEASE</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.hmdp</groupId>
-    <artifactId>hm-dianping</artifactId>
+    <groupId>com.qinghe</groupId>
+    <artifactId>qinghe-marketing-platform</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>hm-dianping</name>
-    <description>Demo project for Spring Boot</description>
+    <name>青禾茶饮会员营销平台</name>
+    <description>连锁茶饮优惠券权益、门店履约、对账与补贴结算的本地模拟实现</description>
     <properties>
         <java.version>1.8</java.version>
         <!-- 统一指定 Spring Data Redis 版本（支持 GEO search 方法） -->
@@ -143,6 +143,7 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
+                    <mainClass>com.qinghe.marketing.QingheMarketingApplication</mainClass>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>

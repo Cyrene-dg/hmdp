@@ -1,20 +1,18 @@
 server:
-  port: 8081
+  port: ${QINGHE_SERVER_PORT:8081}
 spring:
   application:
-    name: hmdp
+    name: qinghe-marketing-platform
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-#    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: 1234
+    url: ${QINGHE_DB_URL:jdbc:mysql://127.0.0.1:3306/qinghe_marketing?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true}
+    username: ${QINGHE_DB_USERNAME:root}
+    password: ${QINGHE_DB_PASSWORD:}
   redis:
-    #host: 192.168.223.128
-    database: 1
-    host: 127.0.0.1
-    port: 6379
-#    password: 123321
+    database: ${QINGHE_REDIS_DATABASE:0}
+    host: ${QINGHE_REDIS_HOST:127.0.0.1}
+    port: ${QINGHE_REDIS_PORT:6379}
+    password: ${QINGHE_REDIS_PASSWORD:}
     lettuce:
       pool:
         max-active: 10
@@ -22,11 +20,11 @@ spring:
         min-idle: 1
         time-between-eviction-runs: 10s
   rabbitmq:
-    host: 127.0.0.1
-    port: 5672
-    username: guest
-    password: guest
-    virtual-host: /
+    host: ${QINGHE_RABBIT_HOST:127.0.0.1}
+    port: ${QINGHE_RABBIT_PORT:5672}
+    username: ${QINGHE_RABBIT_USERNAME:guest}
+    password: ${QINGHE_RABBIT_PASSWORD:guest}
+    virtual-host: ${QINGHE_RABBIT_VHOST:/}
     publisher-confirm-type: correlated
     publisher-returns: true
     template:
@@ -37,15 +35,32 @@ spring:
   jackson:
     default-property-inclusion: non_null # ignore null fields in JSON
 mybatis-plus:
-  type-aliases-package: com.hmdp.entity # entity aliases
+  # 仅供显式开启的旧点评兼容运行时使用；青禾持久层使用 JdbcTemplate。
+  type-aliases-package: com.hmdp.entity
 logging:
   level:
-    com.hmdp: debug
+    com.qinghe.marketing: info
+    com.hmdp: warn
 
 auth:
   mode: hybrid
 
+legacy:
+  hmdp:
+    # 青禾运行边界默认不注册旧点评接口；仅在回看历史功能时显式开启。
+    endpoints-enabled: ${LEGACY_HMDP_ENDPOINTS_ENABLED:false}
+
 qinghe:
+  admin:
+    bearer-token: ${QINGHE_ADMIN_BEARER_TOKEN:}
+    operator-id: ${QINGHE_ADMIN_OPERATOR_ID:local-admin}
+    permissions: ${QINGHE_ADMIN_PERMISSIONS:}
+  member-center:
+    base-url: ${QINGHE_MEMBER_CENTER_BASE_URL:http://127.0.0.1:18081}
+    client-id: ${QINGHE_MEMBER_CENTER_CLIENT_ID:qinghe-rights}
+    client-secret: ${QINGHE_MEMBER_CENTER_CLIENT_SECRET:}
+    connect-timeout-ms: ${QINGHE_MEMBER_CENTER_CONNECT_TIMEOUT_MS:300}
+    read-timeout-ms: ${QINGHE_MEMBER_CENTER_READ_TIMEOUT_MS:800}
   pos:
     allowed-clock-skew-seconds: ${QINGHE_POS_CLOCK_SKEW_SECONDS:300}
     execution:

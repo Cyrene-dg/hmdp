@@ -1,5 +1,6 @@
 package com.hmdp;
 
+import com.qinghe.marketing.QingheMarketingApplication;
 import com.hmdp.entity.Shop;
 import com.hmdp.service.impl.ShopServiceImpl;
 import com.hmdp.utils.RedisIdWoker;
@@ -15,7 +16,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
-@SpringBootTest
+@SpringBootTest(classes = QingheMarketingApplication.class)
 class HmDianPingApplicationTests {
     @Autowired
     private ShopServiceImpl shopService;

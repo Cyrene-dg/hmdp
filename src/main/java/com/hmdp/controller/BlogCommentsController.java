@@ -1,6 +1,7 @@
 package com.hmdp.controller;
 
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import org.springframework.web.bind.annotation.RestController;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 @RestController
 @RequestMapping("/blog-comments")
+@ConditionalOnProperty(name = "legacy.hmdp.endpoints-enabled", havingValue = "true")
 public class BlogCommentsController {
 
 }

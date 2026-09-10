@@ -1,19 +1,16 @@
 package com.hmdp;
 
-import org.mybatis.spring.annotation.MapperScan;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.EnableAspectJAutoProxy;
-import org.springframework.scheduling.annotation.EnableScheduling;
+import com.qinghe.marketing.QingheMarketingApplication;
 
-@MapperScan("com.hmdp.mapper")
-@SpringBootApplication(scanBasePackages = {"com.hmdp", "com.qinghe.marketing"})
-@EnableAspectJAutoProxy(exposeProxy = true)
-@EnableScheduling
+/**
+ * @deprecated 青禾应用已经迁移到 {@link QingheMarketingApplication}。保留该类仅用于兼容旧的
+ * IDE 启动配置，不再作为 Spring Boot 配置源。
+ */
+@Deprecated
 public class HmDianPingApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(HmDianPingApplication.class, args);
+        QingheMarketingApplication.main(args);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import com.qinghe.marketing.QingheMarketingApplication;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -30,7 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
-@SpringBootTest(properties = {
+@SpringBootTest(classes = QingheMarketingApplication.class, properties = {
+        "legacy.hmdp.endpoints-enabled=true",
         "spring.rabbitmq.listener.simple.auto-startup=false"
 })
 @AutoConfigureMockMvc
