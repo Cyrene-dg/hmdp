@@ -140,7 +140,7 @@ public class JdbcClaimRequestRepository implements ClaimRequestRepository {
                 resultSet.getString("claim_cycle"), resultSet.getString("reservation_id"),
                 ClaimStatus.valueOf(resultSet.getString("status")),
                 resultSet.getString("failure_code"), resultSet.getLong("version"),
-                resultSet.getTimestamp("created_at").toLocalDateTime(),
-                resultSet.getTimestamp("updated_at").toLocalDateTime());
+                resultSet.getObject("created_at", LocalDateTime.class),
+                resultSet.getObject("updated_at", LocalDateTime.class));
     }
 }

@@ -49,7 +49,7 @@ public class JdbcReversalRepository implements ReversalRepository {
                         rs.getLong("id"), rs.getString("redemption_no"), rs.getString("pos_order_no"),
                         rs.getLong("entitlement_id"), rs.getLong("store_id"),
                         RedemptionStatus.valueOf(rs.getString("status")),
-                        rs.getTimestamp("occurred_at").toLocalDateTime(), rs.getLong("version"))));
+                        rs.getObject("occurred_at", LocalDateTime.class), rs.getLong("version"))));
     }
 
     @Override
@@ -58,7 +58,7 @@ public class JdbcReversalRepository implements ReversalRepository {
                         + "WHERE id = ? FOR UPDATE", new Object[]{entitlementId},
                 (rs, rowNum) -> new ReversalEntitlement(rs.getLong("id"),
                         EntitlementStatus.valueOf(rs.getString("status")),
-                        rs.getTimestamp("valid_until").toLocalDateTime(), rs.getLong("version"))));
+                        rs.getObject("valid_until", LocalDateTime.class), rs.getLong("version"))));
     }
 
     @Override
@@ -181,8 +181,7 @@ public class JdbcReversalRepository implements ReversalRepository {
                 ReversalRequestStatus.valueOf(rs.getString("status")),
                 rs.getString("reversal_no"), rs.getString("failure_code"),
                 nullableStatus(rs.getString("right_status")),
-                rs.getTimestamp("first_processed_at") == null ? null
-                        : rs.getTimestamp("first_processed_at").toLocalDateTime(),
+                rs.getObject("first_processed_at", LocalDateTime.class),
                 rs.getLong("version"));
     }
 

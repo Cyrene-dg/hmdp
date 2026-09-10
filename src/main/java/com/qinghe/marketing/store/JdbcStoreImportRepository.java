@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -80,15 +79,15 @@ public class JdbcStoreImportRepository implements StoreImportRepository {
         List<StoreImportBatch> batches = jdbcTemplate.query(sql, new Object[]{value}, (resultSet, rowNum) -> {
             long id = resultSet.getLong("id");
             String sourceVersion = resultSet.getString("source_version");
-            Timestamp committed = resultSet.getTimestamp("committed_at");
+            LocalDateTime committed = resultSet.getObject("committed_at", LocalDateTime.class);
             return new StoreImportBatch(id,
                     resultSet.getString("import_no"),
                     sourceVersion,
                     resultSet.getString("file_sha256"),
                     StoreImportStatus.valueOf(resultSet.getString("status")),
                     resultSet.getString("created_by"),
-                    resultSet.getTimestamp("created_at").toLocalDateTime(),
-                    committed == null ? null : committed.toLocalDateTime(),
+                    resultSet.getObject("created_at", LocalDateTime.class),
+                    committed,
                     findRows(id, sourceVersion));
         });
         return batches.stream().findFirst();

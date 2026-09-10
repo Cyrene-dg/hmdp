@@ -116,10 +116,10 @@ public class JdbcMemberEntitlementRepository implements MemberEntitlementReposit
                 resultSet.getString("right_code_hash"), resultSet.getBytes("encrypted_right_code"),
                 resultSet.getLong("source_claim_id"), resultSet.getLong("campaign_id"),
                 resultSet.getLong("member_id"), EntitlementStatus.valueOf(resultSet.getString("status")),
-                resultSet.getTimestamp("valid_from").toLocalDateTime(),
-                resultSet.getTimestamp("valid_until").toLocalDateTime(), resultSet.getLong("version"),
-                resultSet.getTimestamp("created_at").toLocalDateTime(),
-                resultSet.getTimestamp("updated_at").toLocalDateTime());
+                resultSet.getObject("valid_from", LocalDateTime.class),
+                resultSet.getObject("valid_until", LocalDateTime.class), resultSet.getLong("version"),
+                resultSet.getObject("created_at", LocalDateTime.class),
+                resultSet.getObject("updated_at", LocalDateTime.class));
     }
 
     private RowMapper<EntitlementView> viewMapper() {

@@ -37,7 +37,7 @@ public class JdbcPlatformSessionRepository implements PlatformSessionRepository 
                         resultSet.getLong("member_id"),
                         resultSet.getLong("platform_user_id"),
                         resultSet.getString("external_member_no"),
-                        resultSet.getTimestamp("expires_at").toLocalDateTime()));
+                        resultSet.getObject("expires_at", LocalDateTime.class)));
         if (!rows.isEmpty()) {
             jdbcTemplate.update("UPDATE qh_platform_session SET last_access_at = ?, updated_at = ? "
                             + "WHERE access_token_hash = ?",
