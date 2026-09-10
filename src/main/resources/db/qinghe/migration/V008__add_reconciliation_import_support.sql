@@ -37,7 +37,19 @@ ALTER TABLE qh_recon_record
     ADD COLUMN terminal_no VARCHAR(32) NULL AFTER store_code,
     ADD COLUMN pos_order_no VARCHAR(64) NULL AFTER terminal_no,
     ADD COLUMN right_code_hash CHAR(64) NULL AFTER redemption_no,
-    ADD COLUMN match_reason VARCHAR(128) NULL AFTER match_status;
+    ADD COLUMN match_reason VARCHAR(128) NULL AFTER match_status,
+    ADD COLUMN matched_redemption_id BIGINT NULL AFTER match_reason,
+    ADD COLUMN matched_reversal_id BIGINT NULL AFTER matched_redemption_id,
+    ADD COLUMN store_ownership VARCHAR(24) NULL AFTER matched_reversal_id,
+    ADD COLUMN settlement_eligible TINYINT(1) NOT NULL DEFAULT 0 AFTER store_ownership,
+    ADD COLUMN matched_at DATETIME(3) NULL AFTER settlement_eligible,
+    ADD KEY idx_qh_recon_record_match_status (batch_id, match_status),
+    ADD KEY idx_qh_recon_record_matched_redemption (matched_redemption_id),
+    ADD KEY idx_qh_recon_record_matched_reversal (matched_reversal_id),
+    ADD CONSTRAINT fk_qh_recon_record_redemption FOREIGN KEY (matched_redemption_id)
+        REFERENCES qh_redemption (id),
+    ADD CONSTRAINT fk_qh_recon_record_reversal FOREIGN KEY (matched_reversal_id)
+        REFERENCES qh_redemption_reversal (id);
 
 CREATE TABLE qh_recon_import_chunk (
     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -76,6 +88,25 @@ CREATE TABLE qh_recon_import_issue (
     UNIQUE KEY uq_qh_recon_issue_batch_line (batch_id, line_no),
     KEY idx_qh_recon_issue_batch_code (batch_id, error_code),
     CONSTRAINT fk_qh_recon_issue_batch FOREIGN KEY (batch_id) REFERENCES qh_recon_batch (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE qh_recon_difference (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    batch_id BIGINT NOT NULL,
+    record_id BIGINT NULL,
+    redemption_id BIGINT NULL,
+    reversal_id BIGINT NULL,
+    difference_type VARCHAR(32) NOT NULL,
+    business_key VARCHAR(160) NOT NULL,
+    detail VARCHAR(512) NOT NULL,
+    created_at DATETIME(3) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_qh_recon_difference_key (batch_id, difference_type, business_key),
+    KEY idx_qh_recon_difference_batch_type (batch_id, difference_type),
+    CONSTRAINT fk_qh_recon_difference_batch FOREIGN KEY (batch_id) REFERENCES qh_recon_batch (id),
+    CONSTRAINT fk_qh_recon_difference_record FOREIGN KEY (record_id) REFERENCES qh_recon_record (id),
+    CONSTRAINT fk_qh_recon_difference_redemption FOREIGN KEY (redemption_id) REFERENCES qh_redemption (id),
+    CONSTRAINT fk_qh_recon_difference_reversal FOREIGN KEY (reversal_id) REFERENCES qh_redemption_reversal (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE qh_recon_file_attempt (

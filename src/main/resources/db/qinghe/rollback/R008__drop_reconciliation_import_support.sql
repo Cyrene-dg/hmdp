@@ -1,8 +1,19 @@
 DROP TABLE IF EXISTS qh_recon_file_attempt;
+DROP TABLE IF EXISTS qh_recon_difference;
 DROP TABLE IF EXISTS qh_recon_import_issue;
 DROP TABLE IF EXISTS qh_recon_import_chunk;
 
 ALTER TABLE qh_recon_record
+    DROP FOREIGN KEY fk_qh_recon_record_reversal,
+    DROP FOREIGN KEY fk_qh_recon_record_redemption,
+    DROP INDEX idx_qh_recon_record_matched_reversal,
+    DROP INDEX idx_qh_recon_record_matched_redemption,
+    DROP INDEX idx_qh_recon_record_match_status,
+    DROP COLUMN matched_at,
+    DROP COLUMN settlement_eligible,
+    DROP COLUMN store_ownership,
+    DROP COLUMN matched_reversal_id,
+    DROP COLUMN matched_redemption_id,
     DROP COLUMN match_reason,
     DROP COLUMN right_code_hash,
     DROP COLUMN pos_order_no,
