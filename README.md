@@ -133,9 +133,10 @@ mvn spring-boot:run
 mvn "-Dtest=com.qinghe.marketing.**.*Test,VoucherOrderTransactionServiceTest" test
 ```
 
-包含真实 MySQL、隔离 Redis/RabbitMQ 的完整 Gate 需要通过 `qinghe.it.*` 参数注入本地测试环境。最近一次 WP-10 完整结果为 `181 RUN / 181 PASS`；它是改造 WP-11 前的已提交基线，不把本机容量样本解释为生产 SLA。最新命令、清理结果和风险结论见：
+包含真实 MySQL、隔离 Redis/RabbitMQ 的完整 Gate 需要通过 `qinghe.it.*` 参数注入本地测试环境。WP-11 最终完整结果为 `187 RUN / 187 PASS / 0 SKIPPED / 0 FAILED / 0 ERRORS`；本机容量样本只用于回归，不解释为生产 SLA。最新命令、清理结果和风险结论见：
 
 - [WP-10 系统验证检查点](docs/management/WP10_开发检查点_2026-09-10.md)
+- [WP-11 交付检查点](docs/management/WP11_开发检查点_2026-09-10.md)
 - [接口 PoC 证据矩阵](docs/verification/WP10_接口PoC执行证据矩阵_2026-09-10.md)
 - [故障、并发与安全矩阵](docs/verification/WP10_故障并发与安全验证矩阵_2026-09-10.md)
 - [依赖与安全审计](docs/verification/WP10_依赖与安全审计_2026-09-10.md)
@@ -150,4 +151,4 @@ mvn "-Dtest=com.qinghe.marketing.**.*Test,VoucherOrderTransactionServiceTest" te
 
 ## 当前交付结论
 
-一期领域闭环已经在本地模拟条件下实现并通过 WP-00—WP-10 的分阶段验证；WP-11 负责旧入口隔离和成果整理。项目可以用于解释需求如何转化为契约、领域模型、代码、测试和上线前风险决策，但不能表述为真实商业交付或生产上线。
+一期领域闭环与成果整理已经在本地模拟条件下完成，WP-00—WP-11 均通过各自 Gate。项目可以用于解释需求如何转化为契约、领域模型、代码、测试和上线前风险决策，但不能表述为真实商业交付或生产上线。
