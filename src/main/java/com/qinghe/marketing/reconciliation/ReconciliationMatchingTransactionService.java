@@ -41,6 +41,11 @@ public class ReconciliationMatchingTransactionService {
             return;
         }
         PlatformOperationFact fact = selected.get();
+        if (repository.hasProcessedDuplicate(record)) {
+            difference(record, fact, ReconciliationMatchStatus.DIFFERENCE_DATA,
+                    "duplicate POS request in the same reconciliation batch", now);
+            return;
+        }
         if (!record.operationStatus().equals(fact.operationStatus())) {
             difference(record, fact, ReconciliationMatchStatus.DIFFERENCE_STATUS,
                     "POS and platform operation status differ", now);

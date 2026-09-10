@@ -43,15 +43,16 @@ public class ReconciliationFileParser {
         require(manifest.checksum().equals(sha256(csvBytes)), "CSV checksum does not match");
         String text = utf8(csvBytes);
         require(!text.startsWith("\uFEFF"), "CSV must not contain BOM");
-        List<List<String>> records = records(text);
-        require(!records.isEmpty() && HEADER.equals(records.get(0)), "CSV header is invalid");
+        List<CsvRecord> records = records(text);
+        require(!records.isEmpty() && HEADER.equals(records.get(0).values), "CSV header is invalid");
         int dataRows = records.size() - 1;
         require(dataRows == manifest.rowCount(), "CSV rowCount does not match manifest");
         List<ReconciliationCsvRow> valid = new ArrayList<ReconciliationCsvRow>();
         List<ReconciliationRowIssue> issues = new ArrayList<ReconciliationRowIssue>();
         for (int index = 1; index < records.size(); index++) {
-            List<String> values = records.get(index);
-            String digest = sha256(String.join("\u001f", values).getBytes(StandardCharsets.UTF_8));
+            CsvRecord record = records.get(index);
+            List<String> values = record.values;
+            String digest = sha256(record.raw.getBytes(StandardCharsets.UTF_8));
             try {
                 valid.add(row(index + 1, values, manifest, digest));
             } catch (RuntimeException invalid) {
@@ -110,10 +111,10 @@ public class ReconciliationFileParser {
                 occurredAt, digest);
     }
 
-    private static List<List<String>> records(String text) {
-        List<List<String>> rows = new ArrayList<List<String>>();
+    private static List<CsvRecord> records(String text) {
+        List<CsvRecord> rows = new ArrayList<CsvRecord>();
         List<String> row = new ArrayList<String>(); StringBuilder field = new StringBuilder();
-        boolean quoted = false;
+        boolean quoted = false; int recordStart = 0;
         for (int index = 0; index < text.length(); index++) {
             char ch = text.charAt(index);
             if (ch == '"') {
@@ -123,15 +124,32 @@ public class ReconciliationFileParser {
             } else if (ch == ',' && !quoted) {
                 row.add(field.toString()); field.setLength(0);
             } else if ((ch == '\n' || ch == '\r') && !quoted) {
-                if (ch == '\r' && index + 1 < text.length() && text.charAt(index + 1) == '\n') index++;
+                int recordEnd = index;
                 row.add(field.toString()); field.setLength(0);
-                if (!(row.size() == 1 && row.get(0).isEmpty())) rows.add(row);
+                if (!(row.size() == 1 && row.get(0).isEmpty())) {
+                    rows.add(new CsvRecord(row, text.substring(recordStart, recordEnd)));
+                }
                 row = new ArrayList<String>();
+                if (ch == '\r' && index + 1 < text.length() && text.charAt(index + 1) == '\n') index++;
+                recordStart = index + 1;
             } else field.append(ch);
         }
         require(!quoted, "CSV contains an unclosed quote");
-        if (field.length() > 0 || !row.isEmpty()) { row.add(field.toString()); rows.add(row); }
+        if (field.length() > 0 || !row.isEmpty()) {
+            row.add(field.toString());
+            rows.add(new CsvRecord(row, text.substring(recordStart)));
+        }
         return rows;
+    }
+
+    private static final class CsvRecord {
+        private final List<String> values;
+        private final String raw;
+
+        private CsvRecord(List<String> values, String raw) {
+            this.values = values;
+            this.raw = raw;
+        }
     }
 
     private static String utf8(byte[] bytes) {

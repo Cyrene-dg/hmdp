@@ -182,7 +182,7 @@ public class JdbcSettlementRepository implements SettlementRepository {
 
     @Override
     public List<SettlementExportRow> exportRows(long settlementBatchId) {
-        return jdbc.query("SELECT b.batch_no,b.business_date,camp.campaign_no,s.external_store_code,"
+        return jdbc.query("SELECT DISTINCT b.batch_no,b.business_date,camp.campaign_no,s.external_store_code,"
                         + "r.redemption_no,r.pos_request_no,d.subsidy_fen,rr.match_status,d.status "
                         + "FROM qh_settlement_detail d "
                         + "JOIN qh_settlement_batch b ON b.id=d.settlement_batch_id "
@@ -192,6 +192,7 @@ public class JdbcSettlementRepository implements SettlementRepository {
                         + "JOIN qh_redemption r ON r.id=d.redemption_id "
                         + "JOIN qh_recon_record rr ON rr.batch_id=d.recon_batch_id "
                         + "AND rr.matched_redemption_id=d.redemption_id AND rr.operation_type='REDEEM' "
+                        + "AND rr.match_status='MATCHED' AND rr.settlement_eligible=1 "
                         + "WHERE d.settlement_batch_id=? ORDER BY s.external_store_code,r.redemption_no",
                 new Object[]{settlementBatchId}, (rs, rowNum) -> new SettlementExportRow(
                         rs.getString("batch_no"), rs.getDate("business_date").toLocalDate(),

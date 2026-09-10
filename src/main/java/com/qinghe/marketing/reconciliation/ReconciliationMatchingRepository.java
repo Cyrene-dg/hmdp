@@ -9,6 +9,7 @@ public interface ReconciliationMatchingRepository {
     Optional<ReconciliationBatch> findBatchForUpdate(long batchId);
     List<ReconciliationRecord> findUnmatchedForUpdate(long batchId, int limit);
     Optional<PlatformOperationFact> findPlatformFact(ReconciliationRecord record);
+    boolean hasProcessedDuplicate(ReconciliationRecord record);
     SettlementPreparationOutcome prepareSettlementDetail(long batchId,
                                                           PlatformOperationFact fact,
                                                           LocalDateTime now);

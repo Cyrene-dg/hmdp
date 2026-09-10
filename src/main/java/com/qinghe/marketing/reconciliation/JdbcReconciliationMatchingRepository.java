@@ -73,6 +73,16 @@ public class JdbcReconciliationMatchingRepository implements ReconciliationMatch
         return Optional.empty();
     }
 
+    @Override
+    public boolean hasProcessedDuplicate(ReconciliationRecord record) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_record "
+                        + "WHERE batch_id=? AND id<>? AND operation_type=? "
+                        + "AND pos_request_no=? AND store_code=? AND match_status<>'UNMATCHED'",
+                Integer.class, record.batchId(), record.id(), record.operationType(),
+                record.posRequestNo(), record.storeCode());
+        return count != null && count > 0;
+    }
+
     private Optional<PlatformOperationFact> findRedemptionFact(ReconciliationRecord record) {
         if (record.redemptionNo() != null) {
             Optional<PlatformOperationFact> byNumber = first(jdbc.query(REDEMPTION_FACT
