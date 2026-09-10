@@ -1,11 +1,9 @@
 package com.qinghe.marketing.configuration;
 
-import com.hmdp.HmDianPingApplication;
 import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.FilterType;
 
 /**
  * 历史点评模块的兼容入口。青禾默认运行时不会扫描旧业务 Bean；只有显式开启开关时，
@@ -13,13 +11,7 @@ import org.springframework.context.annotation.FilterType;
  */
 @Configuration
 @ConditionalOnProperty(name = "legacy.hmdp.endpoints-enabled", havingValue = "true")
-@ComponentScan(
-        basePackages = "com.hmdp",
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.ASSIGNABLE_TYPE,
-                classes = HmDianPingApplication.class
-        )
-)
+@ComponentScan(basePackages = "com.hmdp")
 @MapperScan("com.hmdp.mapper")
 public class LegacyHmdpRuntimeConfiguration {
 }

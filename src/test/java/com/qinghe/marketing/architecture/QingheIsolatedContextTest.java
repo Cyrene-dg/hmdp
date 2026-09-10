@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Import;
 
 import java.util.Arrays;
 
-import com.hmdp.HmDianPingApplication;
+import com.qinghe.marketing.QingheMarketingApplication;
 import com.qinghe.marketing.configuration.LegacyHmdpRuntimeConfiguration;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -42,9 +42,9 @@ class QingheIsolatedContextTest {
 
     @Test
     void applicationShouldScanQingheOnlyAndKeepLegacyRuntimeOptIn() {
-        SpringBootApplication application = HmDianPingApplication.class
+        SpringBootApplication application = QingheMarketingApplication.class
                 .getAnnotation(SpringBootApplication.class);
-        assertArrayEquals(new String[]{"com.qinghe.marketing"}, application.scanBasePackages());
+        assertArrayEquals(new String[0], application.scanBasePackages());
 
         ConditionalOnProperty legacySwitch = LegacyHmdpRuntimeConfiguration.class
                 .getAnnotation(ConditionalOnProperty.class);
