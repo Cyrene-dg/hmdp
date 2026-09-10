@@ -21,6 +21,20 @@ import com.qinghe.marketing.reconciliation.ReconciliationMatchingTransactionServ
 import com.qinghe.marketing.reconciliation.ReconciliationRegistrationTransactionService;
 import com.qinghe.marketing.shared.clock.BusinessClock;
 import com.qinghe.marketing.shared.id.BusinessIdGenerator;
+import com.qinghe.marketing.settlement.JdbcSettlementRepository;
+import com.qinghe.marketing.settlement.SettlementBatch;
+import com.qinghe.marketing.settlement.SettlementBatchStatus;
+import com.qinghe.marketing.settlement.SettlementConfirmCommand;
+import com.qinghe.marketing.settlement.SettlementConfirmationService;
+import com.qinghe.marketing.settlement.SettlementExport;
+import com.qinghe.marketing.settlement.SettlementExportService;
+import com.qinghe.marketing.settlement.SettlementGenerateCommand;
+import com.qinghe.marketing.settlement.SettlementGenerationOutcome;
+import com.qinghe.marketing.settlement.SettlementGenerationResult;
+import com.qinghe.marketing.settlement.SettlementGenerationService;
+import com.qinghe.marketing.settlement.SettlementRepository;
+import com.qinghe.marketing.shared.error.QingheBusinessException;
+import com.qinghe.marketing.shared.error.QingheErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -47,6 +61,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Real MySQL probe for reconciliation matching and subsidy-detail eligibility. */
 class QingheWp08MatchingPersistenceIT {
@@ -135,6 +151,81 @@ class QingheWp08MatchingPersistenceIT {
             assertEquals(4, replay.differenceRows());
             assertEquals(1, jdbc.queryForObject(
                     "SELECT COUNT(*) FROM qh_settlement_detail", Integer.class));
+
+            SettlementRepository settlementRepository = new JdbcSettlementRepository(jdbc);
+            SettlementGenerationService generation = transactional(
+                    new SettlementGenerationService(settlementRepository,
+                            new BusinessIdGenerator(clock), clock), transactionManager);
+            long reconVersion = jdbc.queryForObject("SELECT version FROM qh_recon_batch "
+                    + "WHERE batch_no='POSB20260908099'", Long.class);
+            SettlementGenerationResult generated = generation.generate(imported.reconBatchNo(),
+                    new SettlementGenerateCommand(reconVersion, "对账完成，申请生成结算批次",
+                            "FIN-008", "settlement-generate-001"));
+            assertEquals(SettlementGenerationOutcome.CREATED, generated.outcome());
+            assertEquals(SettlementBatchStatus.PENDING_CONFIRM, generated.batch().status());
+            assertEquals(1, generated.batch().detailCount());
+            assertEquals(1, generated.batch().storeCount());
+            assertEquals(350, generated.batch().totalFen());
+            assertEquals(1, generated.batch().version());
+
+            SettlementGenerationResult generationReplay = generation.generate(
+                    imported.reconBatchNo(), new SettlementGenerateCommand(reconVersion,
+                            "重复生成请求", "FIN-008", "settlement-generate-002"));
+            assertEquals(SettlementGenerationOutcome.ALREADY_EXISTS,
+                    generationReplay.outcome());
+            assertEquals(generated.batch().batchNo(), generationReplay.batch().batchNo());
+
+            SettlementConfirmationService confirmation = transactional(
+                    new SettlementConfirmationService(settlementRepository, clock),
+                    transactionManager);
+            QingheBusinessException changed = assertThrows(QingheBusinessException.class,
+                    () -> confirmation.confirm(generated.batch().batchNo(),
+                            new SettlementConfirmCommand(1, 2, 350, "错误笔数",
+                                    "FIN-008", "settlement-confirm-bad")));
+            assertEquals(QingheErrorCode.SETTLEMENT_BATCH_CHANGED, changed.errorCode());
+            SettlementBatch confirmed = confirmation.confirm(generated.batch().batchNo(),
+                    new SettlementConfirmCommand(1, 1, 350, "笔数金额复核一致",
+                            "FIN-008", "settlement-confirm-001"));
+            assertEquals(SettlementBatchStatus.CONFIRMED, confirmed.status());
+            assertEquals(2, confirmed.version());
+            assertEquals("FIN-008", confirmed.confirmedBy());
+            SettlementBatch confirmReplay = confirmation.confirm(generated.batch().batchNo(),
+                    new SettlementConfirmCommand(1, 1, 350, "重复确认",
+                            "FIN-008", "settlement-confirm-002"));
+            assertEquals(SettlementBatchStatus.CONFIRMED, confirmReplay.status());
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_settlement_detail "
+                    + "WHERE status='CONFIRMED'", Integer.class));
+
+            SettlementExportService exportService = transactional(
+                    new SettlementExportService(settlementRepository, clock), transactionManager);
+            SettlementExport export = exportService.export(generated.batch().batchNo(),
+                    "FIN-008", "settlement-export-001");
+            String exported = new String(export.content(), StandardCharsets.UTF_8);
+            assertTrue(export.fileName().startsWith(
+                    "QH_SETTLEMENT_" + generated.batch().batchNo() + "_"));
+            assertTrue(exported.contains("RDM-1"));
+            assertTrue(exported.contains(",350,MATCHED,CONFIRMED"));
+            assertFalse(exported.contains("RIGHT-1"));
+            assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM qh_operation_log "
+                    + "WHERE business_type IN ('SETTLEMENT_BATCH','RECON_BATCH')", Integer.class));
+
+            FilePair empty = emptyFile();
+            ReconciliationImportResult emptyImport = importer.importFile(
+                    empty.manifest, empty.fileName, empty.csv, 100);
+            ReconciliationMatchSummary emptyMatch = new ReconciliationMatchingService(
+                    matchingTransactions, matchingCompletion).match(
+                    jdbc.queryForObject("SELECT id FROM qh_recon_batch "
+                            + "WHERE batch_no='POSB20260907099'", Long.class), 10);
+            assertEquals(0, emptyMatch.matchedRows());
+            long emptyVersion = jdbc.queryForObject("SELECT version FROM qh_recon_batch "
+                    + "WHERE batch_no='POSB20260907099'", Long.class);
+            SettlementGenerationResult noSettlement = generation.generate(
+                    emptyImport.reconBatchNo(), new SettlementGenerateCommand(emptyVersion,
+                            "合法空文件无加盟补贴", "FIN-008", "settlement-generate-empty"));
+            assertEquals(SettlementGenerationOutcome.NO_SETTLEMENT_REQUIRED,
+                    noSettlement.outcome());
+            assertEquals(1, jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM qh_settlement_batch", Integer.class));
 
             try (Connection connection = DriverManager.getConnection(url, USER, PASSWORD)) {
                 executeScript(connection,
@@ -242,6 +333,21 @@ class QingheWp08MatchingPersistenceIT {
                 + "\",\"generatedAt\":\"2026-09-09T02:00:05+08:00\","
                 + "\"correctionOfBatchNo\":null}";
         return new FilePair(manifest.getBytes(StandardCharsets.UTF_8), fileName, csvBytes);
+    }
+
+    private static FilePair emptyFile() throws Exception {
+        String batch = "POSB20260907099";
+        String fileName = "POS_20260907_" + batch + ".csv";
+        byte[] csv = ("batch_no,business_date,store_code,terminal_no,pos_order_no,pos_request_no,"
+                + "platform_redemption_no,right_code,operation_type,operation_status,occurred_at\r\n")
+                .getBytes(StandardCharsets.UTF_8);
+        String manifest = "{\"provider\":\"MOCK_POS_VENDOR\",\"batchNo\":\"" + batch
+                + "\",\"businessDate\":\"2026-09-07\",\"schemaVersion\":\"1.0\","
+                + "\"fileName\":\"" + fileName + "\",\"rowCount\":0,"
+                + "\"checksumAlgorithm\":\"SHA-256\",\"checksum\":\"" + sha256(csv)
+                + "\",\"generatedAt\":\"2026-09-08T02:00:05+08:00\","
+                + "\"correctionOfBatchNo\":null}";
+        return new FilePair(manifest.getBytes(StandardCharsets.UTF_8), fileName, csv);
     }
 
     private static String row(String batch, String store, String terminal, String order,
