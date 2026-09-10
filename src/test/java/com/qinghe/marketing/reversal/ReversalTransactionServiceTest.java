@@ -89,6 +89,27 @@ class ReversalTransactionServiceTest {
         assertEquals(1, repository.reversalInsertions);
     }
 
+    @Test
+    void shouldPersistDeniedRequestFromAnotherStoreWithoutChangingFacts() {
+        PosAuthenticatedStore anotherStore = new PosAuthenticatedStore(
+                3L, "S003", StoreOwnershipType.FRANCHISE, "POS-3");
+        PosReversalCommand command = new PosReversalCommand("RDM-0001", "REVREQ-0006",
+                "ORDER-0001", "S003", "OP-3", ReversalReason.POS_ORDER_CANCELLED,
+                "另一门店尝试撤销", NOW);
+
+        QingheBusinessException denied = assertThrows(QingheBusinessException.class,
+                () -> service.reverse(anotherStore, command));
+
+        assertEquals(QingheErrorCode.REVERSAL_NOT_ALLOWED, denied.errorCode());
+        assertEquals(1, repository.failures);
+        assertEquals(1, repository.requests.size());
+        assertEquals(ReversalRequestStatus.FAILED,
+                repository.requests.get("REVREQ-0006").status());
+        assertEquals(0, repository.reversalInsertions);
+        assertEquals(RedemptionStatus.SUCCESS, repository.redemption.status());
+        assertEquals(EntitlementStatus.USED, repository.entitlement.status());
+    }
+
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 9, 16, 0);
     private static PosReversalCommand command(String requestNo, LocalDateTime occurredAt) {
         return new PosReversalCommand("RDM-0001", requestNo, "ORDER-0001", "S002", "OP-1",

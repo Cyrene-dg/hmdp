@@ -1,6 +1,7 @@
 package com.qinghe.marketing.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.qinghe.marketing.entitlement.AesGcmRightCodeProtector;
 import com.qinghe.marketing.entitlement.ProtectedRightCode;
 import com.qinghe.marketing.entitlement.RightCodeProtector;
@@ -139,6 +140,16 @@ class QingheWp08ImportPersistenceIT {
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_file_attempt "
                     + "WHERE result='CONFLICT'", Integer.class));
 
+            Fixture correction = corrected(valid, "POSB20260908003", "POSB20260908001");
+            ReconciliationImportResult corrected = service.importFile(
+                    correction.manifest, correction.fileName, correction.csv, 1);
+            assertEquals(ReconciliationBatchStatus.MATCHING, corrected.status());
+            assertEquals("POSB20260908001", jdbc.queryForObject(
+                    "SELECT correction_of_batch_no FROM qh_recon_batch WHERE batch_no=?",
+                    String.class, "POSB20260908003"));
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_batch "
+                    + "WHERE batch_no='POSB20260908001'", Integer.class));
+
             Fixture invalid = fixture("invalid-row", "20260906", "POSB20260906001");
             ReconciliationImportResult partial = service.importFile(
                     invalid.manifest, invalid.fileName, invalid.csv, 100);
@@ -222,6 +233,15 @@ class QingheWp08ImportPersistenceIT {
         manifest = replace(manifest, oldFile, newFile);
         manifest = replace(manifest, jsonValue(manifest, "checksum"), sha256(csv));
         return new Fixture(manifest, newFile, csv);
+    }
+
+    private static Fixture corrected(Fixture source, String batchNo,
+                                     String sourceBatchNo) throws Exception {
+        Fixture renamed = renamed(source, batchNo);
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode manifest = (ObjectNode) mapper.readTree(renamed.manifest);
+        manifest.put("correctionOfBatchNo", sourceBatchNo);
+        return new Fixture(mapper.writeValueAsBytes(manifest), renamed.fileName, renamed.csv);
     }
 
     private static Fixture fixture(String folder, String date, String batch) throws Exception {

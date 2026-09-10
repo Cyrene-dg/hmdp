@@ -156,6 +156,12 @@ class QingheWp08MatchingPersistenceIT {
             assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM qh_recon_difference "
                     + "WHERE detail='duplicate POS request in the same reconciliation batch'",
                     Integer.class));
+            assertEquals("MATCHED_REVERSAL", jdbc.queryForObject(
+                    "SELECT match_status FROM qh_recon_record WHERE batch_id=? AND line_no=5",
+                    String.class, batchId(jdbc)));
+            assertEquals("MATCHED", jdbc.queryForObject(
+                    "SELECT match_status FROM qh_recon_record WHERE batch_id=? AND line_no=6",
+                    String.class, batchId(jdbc)));
 
             ReconciliationMatchSummary replay = new ReconciliationMatchingService(
                     matchingTransactions, matchingCompletion).match(batchId(jdbc), 2);
@@ -359,8 +365,8 @@ class QingheWp08MatchingPersistenceIT {
                 + row(batch,"QH006","T1","ORDER-1","REDEEM-1","RDM-1","RIGHT-1","REDEEM","SUCCESS","10:00:00")
                 + row(batch,"QH006","T1","ORDER-1","REDEEM-1","RDM-1","RIGHT-1","REDEEM","SUCCESS","10:00:00")
                 + row(batch,"QH001","T2","ORDER-2","REDEEM-2","RDM-2","RIGHT-2","REDEEM","SUCCESS","10:10:00")
-                + row(batch,"QH006","T3","ORDER-3","REDEEM-3","RDM-3","RIGHT-3","REDEEM","SUCCESS","10:20:00")
                 + row(batch,"QH006","T3","ORDER-3","REVERSE-3","RDM-3","RIGHT-3","REVERSE","SUCCESS","10:30:00")
+                + row(batch,"QH006","T3","ORDER-3","REDEEM-3","RDM-3","RIGHT-3","REDEEM","SUCCESS","10:20:00")
                 + row(batch,"QH006","T5","ORDER-5","REDEEM-5","RDM-5","RIGHT-5","REDEEM","FAILED","11:10:00")
                 + row(batch,"QH001","T6","WRONG-ORDER","REDEEM-6","RDM-6","RIGHT-6","REDEEM","SUCCESS","11:20:00")
                 + row(batch,"QH006","TX","ORDER-X","REDEEM-X","","RIGHT-X","REDEEM","SUCCESS","11:30:00");
