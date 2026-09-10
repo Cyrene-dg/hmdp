@@ -18,18 +18,20 @@ public class ReconciliationFileProcessingService {
     private final ReconciliationMatchingService matching;
     private final ReconciliationBatchRepository batches;
     private final ReconciliationMissingFileService missingFiles;
+    private final ReconciliationExecutionMetrics metrics;
     private final int importChunkSize;
     private final int matchChunkSize;
 
     public ReconciliationFileProcessingService(LocalReconciliationFileGateway files,
             ReconciliationImportService imports, ReconciliationMatchingService matching,
             ReconciliationBatchRepository batches,ReconciliationMissingFileService missingFiles,
+            ReconciliationExecutionMetrics metrics,
             @Value("${qinghe.reconciliation.import-chunk-size:500}") int importChunkSize,
             @Value("${qinghe.reconciliation.match-chunk-size:200}") int matchChunkSize) {
         this.files = files;
         this.imports = imports;
         this.matching = matching;
-        this.batches = batches; this.missingFiles=missingFiles;
+        this.batches = batches; this.missingFiles=missingFiles; this.metrics=metrics;
         this.importChunkSize = importChunkSize;
         this.matchChunkSize = matchChunkSize;
     }
@@ -44,10 +46,12 @@ public class ReconciliationFileProcessingService {
                 if (!Files.isRegularFile(csv)) {
                     ReconciliationFileOutcome outcome=missingFiles.observeMissingCsv(
                             files.read(manifest));
-                    results.add(new ReconciliationFileProcessingResult(
+                    ReconciliationFileProcessingResult missing = new ReconciliationFileProcessingResult(
                             manifest.getFileName().toString(), null,
                             outcome,outcome==ReconciliationFileOutcome.MISSING
-                                    ? "CSV_PAIR_MISSING" : null));
+                                    ? "CSV_PAIR_MISSING" : null);
+                    metrics.record(outcome, 0);
+                    results.add(missing);
                     continue;
                 }
                 results.add(process(files.stage(manifest)));
@@ -72,6 +76,13 @@ public class ReconciliationFileProcessingService {
     }
 
     private ReconciliationFileProcessingResult process(ReconciliationStagedFile staged) {
+        long started = System.nanoTime();
+        ReconciliationFileProcessingResult result = doProcess(staged);
+        metrics.record(result.outcome(), System.nanoTime() - started);
+        return result;
+    }
+
+    private ReconciliationFileProcessingResult doProcess(ReconciliationStagedFile staged) {
         String reconBatchNo = null;
         try {
             ReconciliationImportResult imported = imports.importFile(files.read(staged.manifest()),

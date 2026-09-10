@@ -605,6 +605,45 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/GenericPage'
+  /api/v1/admin/exceptions/redis-orphan-reservations:
+    get:
+      tags: [AdminOperations]
+      operationId: inspectRedisOrphanReservations
+      summary: Inspect a bounded set of timed-out Redis reservations for one campaign
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+        - name: campaignId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
+  /api/v1/admin/operations/metrics:
+    get:
+      tags: [AdminOperations]
+      operationId: getOperationalMetrics
+      summary: Read local process counters and persistent operational gauges
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XRequestId'
+      responses:
+        '200':
+          $ref: '#/components/responses/GenericObject'
   /api/v1/admin/recon-batches:
     get:
       tags: [AdminReconciliation]

@@ -34,10 +34,11 @@ class ReconciliationFileProcessingServiceTest {
         ReconciliationMatchingService matching = mock(ReconciliationMatchingService.class);
         ReconciliationBatchRepository batches = mock(ReconciliationBatchRepository.class);
         ReconciliationMissingFileService missingFiles=mock(ReconciliationMissingFileService.class);
+        ReconciliationExecutionMetrics metrics = new ReconciliationExecutionMetrics();
         when(missingFiles.observeMissingCsv(any(byte[].class)))
                 .thenReturn(ReconciliationFileOutcome.MISSING);
         ReconciliationFileProcessingService service = new ReconciliationFileProcessingService(
-                files, imports, matching, batches, missingFiles, 2, 3);
+                files, imports, matching, batches, missingFiles, metrics, 2, 3);
 
         Path inbound = temporary.resolve("inbound");
         Files.createDirectories(inbound);
@@ -61,6 +62,8 @@ class ReconciliationFileProcessingServiceTest {
         assertTrue(Files.exists(inbound.resolve("POS_20260908_MISSING.manifest.json")));
         assertFalse(Files.exists(inbound.resolve("POS_20260908_POSB20260908088.csv")));
         assertEquals(2, regularFileCount(temporary.resolve("archive/success")));
+        assertEquals(1, metrics.snapshot().get("missing"));
+        assertEquals(1, metrics.snapshot().get("completed"));
         verify(matching).match(88, 3);
     }
 
@@ -72,8 +75,9 @@ class ReconciliationFileProcessingServiceTest {
         ReconciliationMatchingService matching = mock(ReconciliationMatchingService.class);
         ReconciliationBatchRepository batches = mock(ReconciliationBatchRepository.class);
         ReconciliationMissingFileService missingFiles=mock(ReconciliationMissingFileService.class);
+        ReconciliationExecutionMetrics metrics = new ReconciliationExecutionMetrics();
         ReconciliationFileProcessingService service = new ReconciliationFileProcessingService(
-                files, imports, matching, batches, missingFiles, 2, 3);
+                files, imports, matching, batches, missingFiles, metrics, 2, 3);
         Path inbound = temporary.resolve("inbound");
         Files.createDirectories(inbound);
 
@@ -99,6 +103,8 @@ class ReconciliationFileProcessingServiceTest {
                 service.retry("POS_20260908_POSB20260908090.csv").outcome());
         assertEquals(0, regularFileCount(temporary.resolve("archive/error")));
         assertEquals(2, regularFileCount(temporary.resolve("archive/success")));
+        assertEquals(1, metrics.snapshot().get("duplicate"));
+        assertEquals(1, metrics.snapshot().get("idempotentHits"));
     }
 
     private static void pair(Path inbound, String stem, String manifest, String csv)

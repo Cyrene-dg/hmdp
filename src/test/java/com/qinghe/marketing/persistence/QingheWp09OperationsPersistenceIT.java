@@ -3,6 +3,7 @@ package com.qinghe.marketing.persistence;
 import com.qinghe.marketing.operations.BusinessIdentifierType;
 import com.qinghe.marketing.operations.BusinessTraceNode;
 import com.qinghe.marketing.operations.JdbcOperationsQueryRepository;
+import com.qinghe.marketing.operations.JdbcOperationalGaugeRepository;
 import com.qinghe.marketing.operations.OperationalExceptionPage;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -81,6 +82,7 @@ class QingheWp09OperationsPersistenceIT {
             assertEquals(page.getTotal(), page.getItems().size());
             assertTrue(exceptionTypes.contains("CLAIM_PROCESSING_STUCK"));
             assertTrue(exceptionTypes.contains("OUTBOX_DEAD"));
+            assertTrue(exceptionTypes.contains("CLAIM_DLQ_FAILED"));
             assertTrue(exceptionTypes.contains("POS_REDEMPTION_FAILED"));
             assertTrue(exceptionTypes.contains("REVERSAL_REJECTED"));
             assertTrue(exceptionTypes.contains("RECON_DIFFERENCE"));
@@ -89,6 +91,11 @@ class QingheWp09OperationsPersistenceIT {
                     "OUTBOX_DEAD", "DEAD", NOW.minusMinutes(5), NOW.minusHours(24), 1, 20);
             assertEquals(1, filtered.getTotal());
             assertEquals("EVT-DEAD", filtered.getItems().get(0).getBusinessId());
+            java.util.Map<String, Long> gauges =
+                    new JdbcOperationalGaugeRepository(jdbc).snapshot();
+            assertEquals(1L, gauges.get("outbox.status.DEAD"));
+            assertEquals(1L, gauges.get("reconciliation.differences"));
+            assertEquals(350L, gauges.get("settlement.pendingAmountFen"));
         } finally {
             dropDatabase(database);
         }
@@ -133,6 +140,9 @@ class QingheWp09OperationsPersistenceIT {
                         + "'PUBLISHED',0,NULL,?,?),(41,'EVT-DEAD','CLAIM_REQUEST','CLM-STUCK',"
                         + "'CLAIM_ACCEPTED',1,CAST('{}' AS JSON),'DEAD',8,'broker unavailable',?,?)",
                 old, old, old, old);
+        jdbc.update("INSERT INTO qh_claim_issue_delivery (id,event_id,claim_id,outcome,failure_code,"
+                        + "processed_at,created_at) VALUES "
+                        + "(42,'EVT-DEAD',31,'FAILED','ISSUE_RETRY_EXHAUSTED',?,?)", old, old);
         jdbc.update("INSERT INTO qh_member_entitlement (id,entitlement_no,right_code_hash,"
                         + "encrypted_right_code,source_claim_id,campaign_id,member_id,status,valid_from,"
                         + "valid_until,version,created_at,updated_at) VALUES "

@@ -18,11 +18,29 @@ import javax.servlet.http.HttpServletRequest;
 public class AdminOperationsController {
     private static final String OPERATION_READ = "operation:read";
     private final OperationsQueryService queries;
+    private final OperationsMetricsService metrics;
+    private final OrphanReservationInspectionService orphanReservations;
     private final AdminAuthorizer authorizer;
 
-    public AdminOperationsController(OperationsQueryService queries, AdminAuthorizer authorizer) {
+    public AdminOperationsController(OperationsQueryService queries,
+                                     OperationsMetricsService metrics,
+                                     OrphanReservationInspectionService orphanReservations,
+                                     AdminAuthorizer authorizer) {
         this.queries = queries;
+        this.metrics = metrics;
+        this.orphanReservations = orphanReservations;
         this.authorizer = authorizer;
+    }
+
+    @GetMapping("/exceptions/redis-orphan-reservations")
+    public QingheApiResponse<OrphanReservationInspection> orphanReservations(
+            @RequestParam long campaignId,
+            @RequestParam(defaultValue = "100") int limit,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            HttpServletRequest request) {
+        authorizer.require(authorization, OPERATION_READ);
+        return QingheApiResponse.ok("success", QingheWebRequest.requestId(request),
+                orphanReservations.inspect(campaignId, limit));
     }
 
     @GetMapping("/business-traces")
@@ -47,6 +65,15 @@ public class AdminOperationsController {
         authorizer.require(authorization, OPERATION_READ);
         return QingheApiResponse.ok("success", QingheWebRequest.requestId(request),
                 queries.exceptions(exceptionType, status, pageNo, pageSize));
+    }
+
+    @GetMapping("/operations/metrics")
+    public QingheApiResponse<OperationsMetricsSnapshot> metrics(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            HttpServletRequest request) {
+        authorizer.require(authorization, OPERATION_READ);
+        return QingheApiResponse.ok("success", QingheWebRequest.requestId(request),
+                metrics.snapshot());
     }
 
     private static BusinessIdentifierType type(String value) {

@@ -96,6 +96,7 @@ public class PosRightsController {
                     new PosRedemptionCommand(body.posRequestNo, body.posOrderNo, body.storeCode,
                             body.terminalNo, body.operatorNo, body.rightCode,
                             businessTime(body.occurredAt)));
+            if (result.replay()) executionGuard.idempotentHit("redeem");
             return QingheApiResponse.ok("redemption succeeded", headerRequestNo,
                     new RedemptionData(result));
         });

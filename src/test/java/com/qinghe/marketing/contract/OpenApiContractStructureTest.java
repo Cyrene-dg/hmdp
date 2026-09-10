@@ -39,7 +39,7 @@ class OpenApiContractStructureTest {
 
         assertEquals(1, memberCenter.operationCount);
         assertEquals(4, pos.operationCount);
-        assertEquals(35, platform.operationCount);
+        assertEquals(37, platform.operationCount);
     }
 
     @Test
@@ -54,6 +54,8 @@ class OpenApiContractStructureTest {
         assertTrue(paths.containsKey("/api/v1/admin/campaigns/{campaignNo}/reviews"));
         assertTrue(paths.containsKey("/api/v1/admin/inventory-adjustments/{adjustmentNo}/reviews"));
         assertTrue(paths.containsKey("/api/v1/admin/business-traces"));
+        assertTrue(paths.containsKey("/api/v1/admin/exceptions/redis-orphan-reservations"));
+        assertTrue(paths.containsKey("/api/v1/admin/operations/metrics"));
         assertTrue(paths.containsKey("/api/v1/admin/recon-batches/{reconBatchNo}/retry"));
         assertTrue(paths.containsKey("/api/v1/admin/settlement-batches/{settlementBatchNo}/confirm"));
         assertTrue(paths.containsKey("/api/v1/admin/settlement-batches/{settlementBatchNo}/export"));

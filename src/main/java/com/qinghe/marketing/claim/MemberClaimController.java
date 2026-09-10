@@ -49,6 +49,7 @@ public class MemberClaimController {
         return executionGuard.execute(() -> {
             ClaimSubmissionResult result = claimService.submit(campaignNo, member.memberId(), requestId,
                     requestedAt);
+            if (result.replay()) executionGuard.idempotentHit();
             QingheApiResponse<ClaimData> response = result.replay()
                     ? QingheApiResponse.ok("existing claim result", requestId,
                     new ClaimData(result.claimRequest(), claimService.entitlementNoFor(result.claimRequest()), true))

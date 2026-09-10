@@ -53,7 +53,7 @@ public class RedemptionTransactionService {
                     request.redemptionNo());
         }
         if (request.status() != PosRequestStatus.PROCESSING) {
-            return RedemptionResult.from(request);
+            return RedemptionResult.replay(request);
         }
 
         PosEntitlementSnapshot entitlement = repository.findEntitlementByRightCodeHashForUpdate(

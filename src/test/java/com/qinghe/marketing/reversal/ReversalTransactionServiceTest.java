@@ -54,6 +54,7 @@ class ReversalTransactionServiceTest {
 
         ReversalResult replay = service.reverse(store, command("REVREQ-0001", NOW));
         assertEquals(result.reversalNo(), replay.reversalNo());
+        assertTrue(replay.replay());
         assertEquals(1, repository.reversalInsertions);
     }
 
